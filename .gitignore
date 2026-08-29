@@ -1,0 +1,72 @@
+# ============================================
+# GreenGrid AI - Git Ignore
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ============================================
+# LARGE SATELLITE DATA
+# ============================================
+
+# Landsat 9 GeoTIFFs
+data/raw/landsat9/**/*.tif
+
+# Sentinel-2 GeoTIFFs
+data/raw/sentinel2/**/*.tif
+
+# ============================================
+# Generated / processed data
+# ============================================
+
+data/processed/
+data/final/
+
+# ============================================
+# Model outputs
+# ============================================
+
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.keras
+models/*.pt
+models/*.pth
+
+# ============================================
+# Temporary files
+# ============================================
+
+*.tmp
+*.temp
+*.log
+
+# QGIS temporary files
+*.qgs~
+*.qgz~
+
+# ============================================
+# OS / editor files
+# ============================================
+
+.vscode/
+.idea/
+
+data/raw/gis/study_area/study_area_raw.geojson

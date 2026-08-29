@@ -1,0 +1,40 @@
+# GreenGrid AI — Python Dependencies
+# Phase 2: Dataset Collection
+# Python 3.12+
+# Install: pip3 install -r requirements.txt
+
+# ─── Core Scientific Stack ──────────────────────────────────────────────────
+numpy>=2.0.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+scipy>=1.11.0
+
+# ─── Geospatial (Vector) ────────────────────────────────────────────────────
+geopandas>=1.0.0         # Vector data processing (GeoDataFrame, spatial ops)
+shapely>=2.0.0           # Geometric operations
+pyproj>=3.6.0            # CRS transformations
+fiona>=1.9.0             # File I/O for vector formats (GeoJSON, Shapefile, etc.)
+
+# ─── Geospatial (Raster) ────────────────────────────────────────────────────
+rasterio>=1.3.0          # GeoTIFF and raster file processing
+
+# ─── Google Earth Engine ────────────────────────────────────────────────────
+earthengine-api>=1.7.0   # Google Earth Engine Python API
+geemap>=0.38.0           # Interactive GEE maps in Jupyter
+
+# ─── HTTP / Networking ──────────────────────────────────────────────────────
+requests>=2.31.0         # HTTP requests (OSM download, etc.)
+
+# ─── Notebooks ──────────────────────────────────────────────────────────────
+jupyter>=1.0.0           # Jupyter notebooks (Phase 3+ analysis)
+ipykernel>=6.0.0         # Jupyter kernel
+
+# ─── Visualization ──────────────────────────────────────────────────────────
+folium>=0.14.0           # Interactive web maps
+plotly>=7.0.0            # Interactive plots
+
+# ─── NOT INSTALLED YET (later phases) ───────────────────────────────────────
+# scikit-learn            # Phase 5: UHI classification
+# xgboost                 # Phase 5: gradient boosting
+# lightgbm                # Phase 5: gradient boosting alternative
+# tensorflow OR pytorch   # Phase 5: deep learning (if needed)
