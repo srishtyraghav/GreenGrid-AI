@@ -39,7 +39,7 @@ Delhi NCT was selected because it is one of Asia's most extreme Urban Heat Islan
 
 ```
 Phase 1  → Problem Definition & Research        ✅ Complete
-Phase 2  → Dataset Collection                   ⚙️ In Progress
+Phase 2  → Dataset Collection                   ✅ Complete
 Phase 3  → Data Preprocessing                   ⬜ Pending Phase 2
 Phase 4  → Feature Extraction                   ⬜ Pending Phase 3
 Phase 5  → AI-Based UHI Detection               ⬜ Pending Phase 4
