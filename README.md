@@ -283,3 +283,24 @@ Validated structured dataset → ready for Phase 3
 ---
 
 *GreenGrid AI | Phase 2 — Dataset Collection*
+
+## Dataset Access
+
+Large satellite GeoTIFF files are not stored in this GitHub repository
+because of GitHub file-size limitations.
+
+The following datasets are stored separately:
+
+- Landsat 9 — July 2022
+- Landsat 9 — July 2026
+- Sentinel-2 — July 2022
+- Sentinel-2 — July 2026
+
+To reproduce the project:
+
+1. Clone this repository.
+2. Obtain the Phase 2 satellite datasets from the shared project storage.
+3. Place the files in the corresponding `data/raw/` directories.
+4. Run the validation scripts.
+
+Google Drive Link: https://drive.google.com/drive/folders/1JzJqUIF4HcZT0-Z4HG9PWjnPxq0i9NQT?usp=sharing
