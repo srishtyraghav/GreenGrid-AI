@@ -40,7 +40,7 @@ Delhi NCT was selected because it is one of Asia's most extreme Urban Heat Islan
 ```
 Phase 1  → Problem Definition & Research        ✅ Complete
 Phase 2  → Dataset Collection                   ✅ Complete
-Phase 3  → Data Preprocessing                   ⬜ Pending Phase 2
+Phase 3  → Data Preprocessing                   ✅ Complete
 Phase 4  → Feature Extraction                   ⬜ Pending Phase 3
 Phase 5  → AI-Based UHI Detection               ⬜ Pending Phase 4
 Phase 6  → UHI Severity Classification          ⬜ Pending Phase 5
@@ -79,8 +79,54 @@ Collect a validated, structured dataset of satellite imagery and GIS data for De
 | Task 6 | Dataset metadata CSV | ✅ COMPLETED |
 | Task 7 | Data validation scripts | ✅ COMPLETED |
 | Task 8 | Phase 2 report | ✅ COMPLETED |
-| Task 9 | GEE export → Google Drive | ⏳ PENDING (manual step) |
-| Task 10 | Download GeoTIFFs from Drive | ⏳ PENDING (after Task 9) |
+| Task 9 | GEE export → Google Drive | ✅ COMPLETED (local GeoTIFFs present) |
+| Task 10 | Download GeoTIFFs from Drive | ✅ COMPLETED (local GeoTIFFs present) |
+
+---
+
+## Phase 3 — Data Preprocessing
+
+### Objective
+Convert the validated Phase 2 raw datasets into a clean, analysis-ready, machine-learning-ready spatial dataset on a common 30 m grid.
+
+### Phase 3 Status
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Task 1 | Calculate NDVI, NDBI, and LST from correct sensor bands | ✅ COMPLETED |
+| Task 2 | Align Landsat 9 and Sentinel-2 to 30 m common grid | ✅ COMPLETED |
+| Task 3 | Preserve existing GEE cloud mask and handle NaN pixels | ✅ COMPLETED |
+| Task 4 | Rasterize OSM vector layers (landuse, roads, vegetation, buildings) | ✅ COMPLETED |
+| Task 5 | Build ML-ready feature table with spatial block IDs | ✅ COMPLETED |
+| Task 6 | Validate preprocessing outputs | ✅ COMPLETED |
+| Task 7 | Phase 3 report | ✅ COMPLETED |
+
+### Run Phase 3
+
+```bash
+source .venv/bin/activate
+
+# Run the full preprocessing pipeline
+python3 -m src.preprocessing.pipeline
+
+# Validate the outputs
+python3 -m src.preprocessing.validate_preprocessing
+```
+
+### Phase 3 Outputs
+
+- `data/processed/phase3/indices/` — native-resolution NDVI, NDBI, and LST rasters
+- `data/processed/phase3/aligned/` — all indices aligned to the common 30 m grid
+- `data/processed/phase3/masks/` — valid-pixel mask and rasterized GIS layers
+- `data/processed/phase3/ml/` — ML-ready feature tables (`feature_table.csv`, `feature_table_2022.csv`, `feature_table_2026.csv`, `feature_metadata.json`)
+- `reports/phase3_preprocessing_report.md` — detailed Phase 3 report
+
+### Key Decisions
+
+- **30 m common grid:** chosen because Landsat 9 LST is only available at 30 m; Sentinel-2 bands are aggregated to this resolution using mean resampling.
+- **NaN handling:** source GeoTIFFs have `nodata=None` but use `NaN` for masked pixels. Phase 3 treats `NaN`/`Inf` as invalid and preserves legitimate zero/negative reflectance values.
+- **No second cloud mask:** Phase 2 GEE scripts already masked clouds using `QA_PIXEL` (Landsat 9) and `SCL` (Sentinel-2).
+- **Spatial blocks:** each feature-table row includes a `spatial_block_id` so later phases can perform spatially aware cross-validation instead of naive random splits.
 
 ---
 
@@ -92,11 +138,11 @@ GreenGrid-AI/
 ├── data/
 │   ├── raw/
 │   │   ├── landsat9/
-│   │   │   ├── 2022_07/       ← Landsat 9 July 2022 (PENDING GEE export)
-│   │   │   └── 2026_07/       ← Landsat 9 July 2026 (PENDING GEE export)
+│   │   │   ├── 2022_07/       ← Landsat 9 July 2022 (local GeoTIFFs)
+│   │   │   └── 2026_07/       ← Landsat 9 July 2026 (local GeoTIFFs)
 │   │   ├── sentinel2/
-│   │   │   ├── 2022_07/       ← Sentinel-2 July 2022 (PENDING GEE export)
-│   │   │   └── 2026_07/       ← Sentinel-2 July 2026 (PENDING GEE export)
+│   │   │   ├── 2022_07/       ← Sentinel-2 July 2022 (local GeoTIFFs)
+│   │   │   └── 2026_07/       ← Sentinel-2 July 2026 (local GeoTIFFs)
 │   │   └── gis/
 │   │       ├── study_area/    ← Delhi NCT boundary (COMPLETED)
 │   │       ├── administrative/← District boundaries (COMPLETED)
@@ -116,6 +162,15 @@ GreenGrid-AI/
 │   │   ├── download_gis_data.py
 │   │   └── validate_data.py
 │   ├── preprocessing/         ← Phase 3 scripts
+│   │   ├── config.py
+│   │   ├── pipeline.py
+│   │   ├── indices.py
+│   │   ├── align.py
+│   │   ├── cloud_mask.py
+│   │   ├── vector_raster.py
+│   │   ├── feature_table.py
+│   │   ├── io.py
+│   │   └── validate_preprocessing.py
 │   ├── features/              ← Phase 4 scripts
 │   ├── models/                ← Phase 5–9 scripts
 │   └── utils/                 ← Shared utilities
@@ -129,7 +184,8 @@ GreenGrid-AI/
 ├── models/                    ← Trained model files
 ├── reports/
 │   ├── phase2_dataset_report.md
-│   └── phase2_validation_report.md
+│   ├── phase2_validation_report.md
+│   └── phase3_preprocessing_report.md
 │
 ├── dataset_metadata.csv       ← Phase 2 dataset catalog
 ├── requirements.txt           ← Python dependencies
@@ -278,7 +334,7 @@ Validated structured dataset → ready for Phase 3
 
 **Why not calculate LST/NDVI yet?** → Phase 2 is data collection only. Index calculation requires preprocessing (Phase 3): scale factors, cloud masking, reprojection, co-registration — all of which must be applied systematically before analysis.
 
-**What happens in Phase 3?** → Apply scale factors → compute LST from ST_B10 → compute NDVI/NDBI → reproject to common grid → clip to Delhi NCT → produce analysis-ready rasters.
+**What happens in Phase 3?** → Applied scale factors → computed LST from ST_B10 → computed NDVI/NDBI → aligned all rasters to a common 30 m grid → rasterized OSM GIS layers → produced analysis-ready feature tables. See `reports/phase3_preprocessing_report.md` and `src/preprocessing/`.
 
 ---
 
