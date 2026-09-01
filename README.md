@@ -41,7 +41,7 @@ Delhi NCT was selected because it is one of Asia's most extreme Urban Heat Islan
 Phase 1  → Problem Definition & Research        ✅ Complete
 Phase 2  → Dataset Collection                   ✅ Complete
 Phase 3  → Data Preprocessing                   ✅ Complete
-Phase 4  → Feature Extraction                   ⬜ Pending Phase 3
+Phase 4  → Feature Extraction                   ✅ Complete
 Phase 5  → AI-Based UHI Detection               ⬜ Pending Phase 4
 Phase 6  → UHI Severity Classification          ⬜ Pending Phase 5
 Phase 7  → Tree Plantation Suitability          ⬜ Pending Phase 6
@@ -130,6 +130,58 @@ python3 -m src.preprocessing.validate_preprocessing
 
 ---
 
+## Phase 4 — Feature Extraction
+
+### Objective
+
+Derive the final environmental-feature set on top of the validated Phase 3 outputs. The only new calculation is proportional Vegetation Cover; all other indices are reused unchanged.
+
+### Phase 4 Status
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Task 1 | Define authoritative feature sources (LST=L9, NDVI/NDBI/VegCover=S2) | ✅ COMPLETED |
+| Task 2 | Derive proportional Vegetation Cover from Sentinel-2 NDVI | ✅ COMPLETED |
+| Task 3 | Assemble combined urban environmental dataset (one row per pixel-year) | ✅ COMPLETED |
+| Task 4 | Compute descriptive statistics and exploratory correlations | ✅ COMPLETED |
+| Task 5 | Generate report-ready maps (LST, NDVI, NDBI, Vegetation Cover) | ✅ COMPLETED |
+| Task 6 | Validate Phase 4 outputs | ✅ COMPLETED |
+| Task 7 | Phase 4 report | ✅ COMPLETED |
+
+### Run Phase 4
+
+```bash
+source .venv/bin/activate
+
+# Run the full feature-extraction pipeline (includes map generation)
+PYTHONPATH=src python3 -m features.pipeline
+
+# Validate the outputs
+PYTHONPATH=src python3 -m features.validate_features
+
+# Run without maps (faster for testing)
+PYTHONPATH=src python3 -m features.pipeline --skip-maps
+```
+
+### Phase 4 Outputs
+
+- `data/processed/phase4/features/` — Vegetation Cover rasters (`vegetation_cover_2022_30m.tif`, `vegetation_cover_2026_30m.tif`)
+- `data/processed/phase4/tables/` — `combined_urban_environmental_dataset.csv` (300,000 rows × 14 columns)
+- `data/processed/phase4/maps/` — LST, NDVI, NDBI, and Vegetation Cover maps for 2022 and 2026
+- `data/processed/phase4/phase4_feature_metadata.json` — dataset and statistics metadata
+- `data/processed/phase4/phase4_pipeline_record.json` — reproducibility record
+- `reports/phase4_feature_extraction_report.md` — detailed Phase 4 report
+
+### Key Decisions
+
+- **Authoritative sources:** LST comes from Landsat 9; NDVI, NDBI, and Vegetation Cover come from Sentinel-2.
+- **Vegetation Cover:** proportional vegetation cover derived from Sentinel-2 NDVI using `PVC = (NDVI − 0.05) / (0.80 − 0.05)`, clamped to [0, 1]. The reference values are a Phase 4 methodological assumption documented in the report.
+- **Continuous NDVI preserved:** Vegetation Cover is stored alongside NDVI, not as a replacement.
+- **Spatial blocks retained:** `spatial_block_id` is carried into the combined dataset for later spatially aware validation.
+- **No Phase 5 modelling:** UHI detection and ML training are intentionally out of scope for Phase 4.
+
+---
+
 ## Folder Structure
 
 ```
@@ -150,8 +202,10 @@ GreenGrid-AI/
 │   │       ├── landuse/       ← OSM land use (COMPLETED)
 │   │       ├── vegetation/    ← OSM green areas (COMPLETED)
 │   │       └── buildings/     ← OSM building footprints (COMPLETED)
-│   ├── processed/             ← Phase 3 outputs
-│   └── final/                 ← Phase 4+ outputs
+│   ├── processed/             ← Phase 3 & 4 outputs
+│   │   ├── phase3/            ← Phase 3 outputs
+│   │   └── phase4/            ← Phase 4 outputs
+│   └── final/                 ← Phase 5+ outputs
 │
 ├── notebooks/                 ← Jupyter notebooks (Phase 3+)
 │
@@ -172,6 +226,13 @@ GreenGrid-AI/
 │   │   ├── io.py
 │   │   └── validate_preprocessing.py
 │   ├── features/              ← Phase 4 scripts
+│   │   ├── config.py
+│   │   ├── io.py
+│   │   ├── vegetation_cover.py
+│   │   ├── features.py
+│   │   ├── maps.py
+│   │   ├── pipeline.py
+│   │   └── validate_features.py
 │   ├── models/                ← Phase 5–9 scripts
 │   └── utils/                 ← Shared utilities
 │
@@ -185,7 +246,8 @@ GreenGrid-AI/
 ├── reports/
 │   ├── phase2_dataset_report.md
 │   ├── phase2_validation_report.md
-│   └── phase3_preprocessing_report.md
+│   ├── phase3_preprocessing_report.md
+│   └── phase4_feature_extraction_report.md
 │
 ├── dataset_metadata.csv       ← Phase 2 dataset catalog
 ├── requirements.txt           ← Python dependencies
