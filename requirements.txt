@@ -33,8 +33,10 @@ ipykernel>=6.0.0         # Jupyter kernel
 folium>=0.14.0           # Interactive web maps
 plotly>=7.0.0            # Interactive plots
 
+# ─── Machine Learning ───────────────────────────────────────────────────────
+scikit-learn>=1.5.0      # Phase 5: Random Forest for UHI classification
+xgboost>=2.0.0           # Phase 5: XGBoost for UHI classification
+
 # ─── NOT INSTALLED YET (later phases) ───────────────────────────────────────
-# scikit-learn            # Phase 5: UHI classification
-# xgboost                 # Phase 5: gradient boosting
 # lightgbm                # Phase 5: gradient boosting alternative
 # tensorflow OR pytorch   # Phase 5: deep learning (if needed)

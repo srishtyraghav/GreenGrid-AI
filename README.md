@@ -42,7 +42,7 @@ Phase 1  → Problem Definition & Research        ✅ Complete
 Phase 2  → Dataset Collection                   ✅ Complete
 Phase 3  → Data Preprocessing                   ✅ Complete
 Phase 4  → Feature Extraction                   ✅ Complete
-Phase 5  → AI-Based UHI Detection               ⬜ Pending Phase 4
+Phase 5  → AI-Based UHI Detection               ✅ Complete
 Phase 6  → UHI Severity Classification          ⬜ Pending Phase 5
 Phase 7  → Tree Plantation Suitability          ⬜ Pending Phase 6
 Phase 8  → Tree Requirement Estimation          ⬜ Pending Phase 7
@@ -179,6 +179,124 @@ PYTHONPATH=src python3 -m features.pipeline --skip-maps
 - **Continuous NDVI preserved:** Vegetation Cover is stored alongside NDVI, not as a replacement.
 - **Spatial blocks retained:** `spatial_block_id` is carried into the combined dataset for later spatially aware validation.
 - **No Phase 5 modelling:** UHI detection and ML training are intentionally out of scope for Phase 4.
+
+---
+
+## Phase 5 — AI-Based UHI Detection & Classification
+
+### Objective
+
+Implement the project’s first machine-learning component: classify 30 m pixels into relative LST heat-severity categories (Low, Moderate, High, Severe) using Phase 4 environmental features.
+
+### Phase 5 Status
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Task 1 | Define per-year quartile target from LST | ✅ COMPLETED |
+| Task 2 | Prevent target leakage (exclude `lst_C`, coordinates, `spatial_block_id`) | ✅ COMPLETED |
+| Task 3 | Add block-aware spatial neighbourhood features | ✅ COMPLETED |
+| Task 4 | Implement Random Forest classifier | ✅ COMPLETED |
+| Task 5 | Implement XGBoost classifier | ✅ COMPLETED |
+| Task 6 | Spatial GroupKFold validation | ✅ COMPLETED |
+| Task 7 | Temporal generalization experiments | ✅ COMPLETED |
+| Task 8 | Feature ablation and year-sensitivity experiments | ✅ COMPLETED |
+| Task 9 | Generate predictions, rasters, and maps | ✅ COMPLETED |
+| Task 10 | Validate Phase 5 outputs | ✅ COMPLETED |
+| Task 11 | Clean-run reproducibility test | ✅ COMPLETED |
+| Task 12 | Phase 5 report | ✅ COMPLETED |
+| Task 13 | Urban morphology feature experiment | ✅ COMPLETED |
+| Task 14 | OOF diagnostics (OOF predictions, confusion matrices, boundary analysis, permutation importance) | ✅ COMPLETED |
+| Task 15 | Generalization & overfitting audit (gap, regularization, seeds, permutation, LOBO, distance stress test, nested CV, locked holdout) | ✅ COMPLETED |
+
+### Run Phase 5
+
+```bash
+source .venv/bin/activate
+
+# Run the full Phase 5 pipeline (includes spatial features, maps, and tables)
+PYTHONPATH=src python3 -m models.pipeline
+
+# Validate the outputs
+PYTHONPATH=src python3 -m models.validate_models
+
+# Run without map generation (faster for testing)
+PYTHONPATH=src python3 -m models.pipeline --skip-maps
+
+# Generalization / overfitting audit (development diagnostics, ~5 h)
+PYTHONPATH=src python3 scripts/run_phase5_audit.py
+
+# Locked geographic holdout — evaluated exactly once, after the
+# development results are reviewed and the configuration is frozen
+PYTHONPATH=src python3 scripts/run_phase5_audit.py --final
+
+# Morphology implementation reference test (numerical exactness)
+PYTHONPATH=src python3 tests/test_morphology_reference.py
+```
+
+### Phase 5 Outputs
+
+- `data/processed/phase5/tables/predictions.csv` — final pixel-level predictions and probabilities
+- `data/processed/phase5/tables/oof_predictions.csv` — out-of-fold predictions per model/fold
+- `data/processed/phase5/tables/model_comparison.csv` — model comparison metrics
+- `data/processed/phase5/tables/classification_metrics.csv` — per-fold metrics (incl. train/validation gap)
+- `data/processed/phase5/tables/ablation_results.csv` — ablation experiment results
+- `data/processed/phase5/tables/feature_importance.csv` — selected model feature importance
+- `data/processed/phase5/tables/permutation_importance.csv` — RF permutation importance
+- `data/processed/phase5/tables/confusion_matrices.csv` — per-fold and aggregated confusion matrices
+- `data/processed/phase5/tables/boundary_case_analysis.csv` — accuracy vs distance-to-threshold
+- `data/processed/phase5/tables/morphology_features.csv` — cached morphology features
+- `data/processed/phase5/predictions/uhi_2022.tif` — 2022 UHI severity raster
+- `data/processed/phase5/predictions/uhi_2026.tif` — 2026 UHI severity raster
+- `data/processed/phase5/probabilities/probability_*.tif` — per-class probability rasters
+- `data/processed/phase5/maps/uhi_2022.png` — 2022 UHI severity map
+- `data/processed/phase5/maps/uhi_2026.png` — 2026 UHI severity map
+- `data/processed/phase5/phase5_model_metadata.json` — model and target metadata
+- `data/processed/phase5/phase5_pipeline_record.json` — reproducibility record
+- `data/processed/phase5/phase5_validation_report.json` — validation report
+- `reports/phase5_uhi_detection_report.md` — detailed Phase 5 report
+
+Audit diagnostics (`data/processed/phase5/tables/`): `phase5_baseline_manifest.json`,
+`train_validation_gap.csv` (+ `_summary`), `rf_regularization.csv`, `xgb_regularization.csv`,
+`seed_stability.csv`, `prediction_stability.csv`, `target_permutation_test.csv`,
+`learning_curves.csv`, `leave_one_block_out.csv`, `spatial_distance_stress_test.csv`,
+`feature_permutation_sanity.csv`, `data_integrity_duplicate_audit.csv`, `leakage_audit.csv`,
+`nested_spatial_cv_results.csv`, `compact_feature_results.csv`, `calibration_report.csv`,
+`spatial_error_autocorrelation.csv`, `year_feature_investigation.csv`,
+`locked_geographic_holdout.csv`, `phase5_generalization_summary.json`.
+
+### Key Results
+
+| Model | Mean Accuracy | Macro F1 | High Recall | Severe Recall |
+|---|---|---|---|---|
+| Majority Baseline | 24.76% | 0.0984 | 0.0000 | 0.0000 |
+| Stratified Baseline | 24.97% | 0.2442 | 0.2508 | 0.2495 |
+| NDVI/NDBI Rule Baseline | 36.33% | 0.3547 | 0.2801 | 0.4247 |
+| Random Forest (no spatial context) | 42.65% | 0.3999 | 0.3692 | 0.4720 |
+| XGBoost (no spatial context) | 42.66% | 0.3965 | 0.3383 | 0.4882 |
+| Random Forest (spatial means) | 44.99% | 0.4232 | 0.4008 | 0.4867 |
+| XGBoost (spatial means) | 45.32% | 0.4215 | 0.3750 | 0.5265 |
+| **Random Forest (spatial + morphology)** | **46.28%** | **0.4306** | **0.4017** | **0.5104** |
+| XGBoost (spatial + morphology) | 46.29% | 0.4266 | 0.3811 | 0.5308 |
+
+Generalization-audit results (see report §20): regularized RF-C
+(`max_depth=15`, `min_samples_leaf=10`) reaches **46.99% / 0.4310** with the
+train/validation gap halved (28.9 pp vs 53.3 pp). Locked geographic holdout
+(unseen blocks 3, 11, 17): **39.9% accuracy / 0.395 macro-F1** — consistent
+with LOBO and far-band stress tests; no leakage (permutation test at chance);
+seed macro-F1 range 0.0011; nested-CV outer macro-F1 identical to flat CV
+(0.4306). **The 60% target is not met; the trustworthy ceiling is ~47%
+(adjacent-block CV) / ~40% (unseen geography).**
+
+### Key Decisions
+
+- **Target:** Per-year LST quartiles produce balanced, interpretable relative heat-severity classes.
+- **Leakage prevention:** `lst_C`, `spatial_block_id`, and coordinates are excluded from predictors.
+- **Spatial validation:** GroupKFold on `spatial_block_id` prevents spatial leakage.
+- **Spatial features:** Block-aware 3×3, 5×5, and 11×11 focal means improve macro F1 by ~0.023–0.025.
+- **Morphology features:** Block-aware 50/100/250/500 m urban-form features (building/road/vegetation pixel fractions, vegetation-cover means, land-use composition/entropy, NDVI/NDBI contrast) add a further ~+0.007 macro F1 and +1 pp accuracy over the spatial-means benchmark.
+- **Model selection:** Random Forest selected by deterministic hierarchy (macro F1 → hotspot recall → stability → interpretability); it essentially ties XGBoost.
+- **Audit selection (Phase 5 extension):** RF-C (`max_depth=15`, `min_samples_leaf=10`) selected over the baseline RF — highest macro-F1, best hotspot recall, half the overfitting gap, better fold stability.
+- **Scientific framing:** Outputs are described as relative heat-severity classification, not independently measured physical UHI intensity; the audit confirms the binding constraint is the four-class quartile target (40.8% accuracy within 0.5 °C of a boundary vs 52.3% on clear pixels), not overfitting.
 
 ---
 
