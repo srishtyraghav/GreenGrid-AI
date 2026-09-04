@@ -44,7 +44,7 @@ Phase 3  → Data Preprocessing                   ✅ Complete
 Phase 4  → Feature Extraction                   ✅ Complete
 Phase 5  → AI-Based UHI Detection               ✅ Complete
 Phase 6  → UHI Severity Mapping — full-grid ML heat-severity maps, hotspot delineation, area-wise heat statistics, green vs built-up analytics (relative heat-severity proxy) ✅ Complete
-Phase 7  → Tree Plantation Suitability          ⬜ Pending Phase 6
+Phase 7  → Tree Plantation Suitability — GIS multi-criteria suitability & priority zones on Phase 6 heat severity (potential suitability, not land availability) ✅ Complete
 Phase 8  → Tree Requirement Estimation          ⬜ Pending Phase 7
 Phase 9  → Temperature Reduction Prediction     ⬜ Pending Phase 8
 Phase 10 → Visualization & Integration          ⬜ Pending Phase 9
@@ -350,6 +350,51 @@ PYTHONPATH=src .venv/bin/python -m severity.validate_severity [--repro]
 
 ---
 
+## Phase 7 — Tree Plantation Suitability
+
+### Objective
+
+Turn Phase 6's full-grid relative heat-severity products into a GIS-based multi-criteria decision-support layer answering **"where should tree plantation potentially be prioritized, and why?"** — separating **Heat Need** (severity, NDVI, NDBI, LST), **Plantation Opportunity** (land-use eligibility, built-up intensity, non-monotonic road accessibility, green proximity, planting headroom), and **Constraints** (only the invalid mask is implementable — no water/building-footprint/road-surface rasters exist in the project data). Final suitability uses a gated product `S = Need × Opportunity / 100` so extreme heat alone cannot create high suitability on low-opportunity land. Outputs are **potential plantation suitability — not legal land availability, not a physical plantability guarantee, not a causal cooling prediction**.
+
+### Run Phase 7
+
+```bash
+source .venv/bin/activate
+
+# Stage 1: need/opportunity/scoring rasters + scenario rasters (deterministic)
+PYTHONPATH=src .venv/bin/python -m suitability.pipeline
+
+# Stage 2: priority zones, statistics, temporal, sensitivity, why-here
+PYTHONPATH=src .venv/bin/python -m suitability.zones
+
+# Stage 3: figures (13 report figures)
+PYTHONPATH=src .venv/bin/python -m suitability.figures
+
+# Stage 4: validation (137 checks; --repro re-runs analytics and demands bit-identical tables)
+PYTHONPATH=src .venv/bin/python -m suitability.validate_suitability [--repro]
+```
+
+### Phase 7 Key Results
+
+- Full-grid suitability maps for both years over the **1,500,777 valid pixels/yr (118,119 ha)** Phase 6 grid; per-year robust (p1–p99) normalization; five operational classes (Very Low → Very High).
+- Baseline (Scenario A, gated product) is conservative by construction: **High = 582 px / 45.8 ha, Very High = 0 (2022)**; **High = 124 px / 9.8 ha, Very High = 0 (2026)**; 11 (2022) / 3 (2026) priority zones, each with a machine-readable "why here?" explanation.
+- **Sensitivity headline**: priority-zone extent varies ~1000× across reasonable need/opportunity weightings (baseline 46 ha → Scenario B 45,315 ha High+VH in 2022); recommendations are scenario-conditional, and the baseline is conservative by design — reported explicitly, not hidden.
+- Road accessibility is non-monotonic (poor < 50 m, optimal 50–500 m, declining to a floor beyond 2,000 m); NDVI–vegetation_cover redundancy (r ≈ 0.998–0.9995) handled by excluding PVC from the baseline need score (Scenario D only).
+- 2022↔2026 suitability snapshots are relative class comparisons, not a trend; persistence categories (Persistent / Emerging / Declining / Stable Low) computed at paired cells.
+- Validation: **137 PASS / 0 FAIL / 0 WARN** including bit-identical table re-run, formula recomputation, polygon validity, area reconciliation in EPSG:32643, leakage/circularity static audit, and frozen Phase 5 (57/0/0) + Phase 6 (147/0/0) integrity checks.
+
+### Phase 7 Outputs
+
+- `data/processed/phase7/rasters/` — heat need, plantation opportunity, suitability + class rasters, scenario B/C/D rasters, exclusion mask
+- `data/processed/phase7/vectors/` — High/Very High/combined priority zones (baseline + scenarios B/C), temporal priority zones
+- `data/processed/phase7/tables/` — suitability summaries, area statistics, priority zone statistics & ranking, why-here explanations, land-use rules matrix, normalization parameters, feature-dependency analysis, sensitivity, temporal transition, green/built & land-use summaries
+- `data/processed/phase7/figures/` — 13 report figures (`fig01`–`fig13`)
+- `data/processed/phase7/phase7_manifest.json`, `phase7_pipeline_record.json`, `reports/phase7_validation_report.json`
+- `reports/phase7_input_audit.md`, `reports/phase7_design_spec.md` — input audit and frozen design decisions
+- Full Phase 7 report — pending (see `reports/`)
+
+---
+
 ## Folder Structure
 
 ```
@@ -370,11 +415,12 @@ GreenGrid-AI/
 │   │       ├── landuse/       ← OSM land use (COMPLETED)
 │   │       ├── vegetation/    ← OSM green areas (COMPLETED)
 │   │       └── buildings/     ← OSM building footprints (COMPLETED)
-│   ├── processed/             ← Phase 3–6 outputs
+│   ├── processed/             ← Phase 3–7 outputs
 │   │   ├── phase3/            ← Phase 3 outputs
 │   │   ├── phase4/            ← Phase 4 outputs
 │   │   ├── phase5/            ← Phase 5 outputs
-│   │   └── phase6/            ← Phase 6 outputs (rasters, hotspots, tables, figures, reports, models)
+│   │   ├── phase6/            ← Phase 6 outputs (rasters, hotspots, tables, figures, reports, models)
+│   │   └── phase7/            ← Phase 7 outputs (rasters, vectors, tables, figures, reports)
 │
 ├── notebooks/                 ← Jupyter notebooks (Phase 3+)
 │
@@ -414,6 +460,19 @@ GreenGrid-AI/
 │   │   ├── analytics.py
 │   │   ├── figures.py
 │   │   └── validate_severity.py
+│   ├── suitability/           ← Phase 7 scripts
+│   │   ├── config.py
+│   │   ├── inputs.py
+│   │   ├── normalization.py
+│   │   ├── need.py
+│   │   ├── opportunity.py
+│   │   ├── constraints.py
+│   │   ├── scoring.py
+│   │   ├── zones.py
+│   │   ├── statistics.py
+│   │   ├── figures.py
+│   │   ├── pipeline.py
+│   │   └── validate_suitability.py
 │   └── utils/                 ← Shared utilities
 │
 ├── gee/                       ← Google Earth Engine scripts
@@ -429,7 +488,10 @@ GreenGrid-AI/
 │   ├── phase3_preprocessing_report.md
 │   ├── phase4_feature_extraction_report.md
 │   ├── phase5_uhi_detection_report.md
-│   └── phase6_uhi_severity_mapping_report.md
+│   ├── phase6_uhi_severity_mapping_report.md
+│   ├── phase7_input_audit.md
+│   ├── phase7_design_spec.md
+│   └── phase7_tree_plantation_suitability_report.md ← pending
 │
 ├── dataset_metadata.csv       ← Phase 2 dataset catalog
 ├── requirements.txt           ← Python dependencies
