@@ -391,7 +391,7 @@ PYTHONPATH=src .venv/bin/python -m suitability.validate_suitability [--repro]
 - `data/processed/phase7/figures/` — 13 report figures (`fig01`–`fig13`)
 - `data/processed/phase7/phase7_manifest.json`, `phase7_pipeline_record.json`, `reports/phase7_validation_report.json`
 - `reports/phase7_input_audit.md`, `reports/phase7_design_spec.md` — input audit and frozen design decisions
-- Full Phase 7 report — pending (see `reports/`)
+- `reports/phase7_tree_plantation_suitability_report.md` — detailed Phase 7 report
 
 ---
 
@@ -491,7 +491,7 @@ GreenGrid-AI/
 │   ├── phase6_uhi_severity_mapping_report.md
 │   ├── phase7_input_audit.md
 │   ├── phase7_design_spec.md
-│   └── phase7_tree_plantation_suitability_report.md ← pending
+│   └── phase7_tree_plantation_suitability_report.md
 │
 ├── dataset_metadata.csv       ← Phase 2 dataset catalog
 ├── requirements.txt           ← Python dependencies
