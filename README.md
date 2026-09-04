@@ -43,7 +43,7 @@ Phase 2  → Dataset Collection                   ✅ Complete
 Phase 3  → Data Preprocessing                   ✅ Complete
 Phase 4  → Feature Extraction                   ✅ Complete
 Phase 5  → AI-Based UHI Detection               ✅ Complete
-Phase 6  → UHI Severity Classification          ⬜ Pending Phase 5
+Phase 6  → UHI Severity Mapping — full-grid ML heat-severity maps, hotspot delineation, area-wise heat statistics, green vs built-up analytics (relative heat-severity proxy) ✅ Complete
 Phase 7  → Tree Plantation Suitability          ⬜ Pending Phase 6
 Phase 8  → Tree Requirement Estimation          ⬜ Pending Phase 7
 Phase 9  → Temperature Reduction Prediction     ⬜ Pending Phase 8
@@ -300,6 +300,56 @@ seed macro-F1 range 0.0011; nested-CV outer macro-F1 identical to flat CV
 
 ---
 
+## Phase 6 — UHI Severity Mapping
+
+### Objective
+
+Turn the frozen, audited Phase 5 classification into decision-support analytics over the **full valid grid** (Phase 5 rasters covered only the ~4.5% of the grid represented by sampled pixels): full-grid severity/probability/confidence rasters, delineated hotspot boundaries, area-wise heat statistics, green vs built-up analytics, vegetation/urbanization–LST relationships, temporal snapshot comparison, and uncertainty diagnostics. The production model is the regularized **RF-C** adopted per the Phase 5 report §24, retrained on all 300,000 sampled rows; Phase 5 experiment results are unchanged. All outputs are **ML-based relative heat severity — an operational UHI hotspot proxy, NOT physical UHI intensity**.
+
+### Run Phase 6
+
+```bash
+source .venv/bin/activate
+
+# Stage 1: full-grid prediction (RF-C retrained on all 300k rows; --skip-model reuses the saved model)
+PYTHONPATH=src .venv/bin/python -m severity.pipeline [--skip-model]
+
+# Stage 2: hotspot delineation (definitions A/B/C, boundaries, sensitivity)
+PYTHONPATH=src .venv/bin/python -m severity.hotspots
+
+# Stage 3: analytics (area statistics, green/built, correlations, temporal, error/uncertainty)
+PYTHONPATH=src .venv/bin/python -m severity.analytics
+
+# Stage 4: figures (16 report figures)
+PYTHONPATH=src .venv/bin/python -m severity.figures
+
+# Stage 5: validation (147 checks; --repro re-runs analytics and demands bit-identical tables)
+PYTHONPATH=src .venv/bin/python -m severity.validate_severity [--repro]
+```
+
+### Phase 6 Key Results
+
+- Full-grid severity maps for both years: **1,500,777 valid pixels/yr (118,119 ha)** on the frozen Phase 5 grid, with verified Phase 5 feature parity (max abs diff ≤ 1.2 × 10⁻¹⁰, float32 tolerance).
+- High + Severe exposure: **53.96% (63,708 ha) in 2022** and **53.08% (62,694 ha) in 2026** of the valid area.
+- Definition-A hotspots (High+Severe, ≥10-px clusters): **580 hotspots / 63,323 ha (2022)** and **495 / 62,461 ha (2026)**; largest ~46,071 ha (2022) and ~49,001 ha (2026); boundary validation 0 invalid / 0 zero-area polygons, area accounting ≤ 0.23%.
+- Hotspot persistence between snapshots: **37.8% of cells hot in both years** (mask IoU 0.551; P(HS₂₀₂₆|HS₂₀₂₂) = 0.707); 2022/2026 are two snapshots, not a trend — per-year quartile classes make cross-year severity class-relative (2026 mean LST 34.94 °C vs 2022 38.76 °C).
+- Built-dominant areas are hotter than green-dominant areas in mean LST by **+7.22 °C (2022)** and **+2.63 °C (2026)**, with 94.1% / 81.4% High+Severe shares respectively (association only; conventional NDVI/NDBI thresholds).
+- NDVI–LST correlations −0.29 to −0.37 and NDBI–LST +0.34 to +0.42 (both years); NDVI and vegetation_cover are near-duplicates (r ≈ 0.998–0.9995) — not independent evidence.
+- Uncertainty zones (top-2 margin < 0.10 or confidence < 0.50): **61.1% of cells (2022) / 40.4% (2026)**; OOF accuracy near quartile boundaries ~36–48% vs ~55–56% on clear cells — the honest full-grid accuracy ceiling remains the frozen Phase 5 numbers (~47% adjacent-block CV / ~40% locked holdout; the 60% target was not achieved).
+- Validation: **147 PASS / 0 FAIL / 0 WARN** including bit-identical analytics re-run and frozen Phase 5 integrity checks.
+
+### Phase 6 Outputs
+
+- `data/processed/phase6/rasters/` — full-grid severity, per-class probability, confidence, severity-score, LST, OOF-error and uncertainty-zone rasters
+- `data/processed/phase6/hotspots/` — hotspot mask rasters and boundary GeoJSONs (definitions A/B/C, both years)
+- `data/processed/phase6/tables/` — severity/high-risk summaries, hotspot statistics & sensitivity, area statistics, green/built comparison, land-use heat statistics, vegetation/urbanization–LST relationships, temporal comparison & transition matrix, error diagnostics, uncertainty summary
+- `data/processed/phase6/figures/` — 16 report figures (`fig01`–`fig16`)
+- `data/processed/phase6/models/severity_rf_c.joblib` — production RF-C model
+- `data/processed/phase6/phase6_manifest.json`, `phase6_pipeline_record.json`, `reports/phase6_validation_report.json`
+- `reports/phase6_uhi_severity_mapping_report.md` — detailed Phase 6 report
+
+---
+
 ## Folder Structure
 
 ```
@@ -320,10 +370,11 @@ GreenGrid-AI/
 │   │       ├── landuse/       ← OSM land use (COMPLETED)
 │   │       ├── vegetation/    ← OSM green areas (COMPLETED)
 │   │       └── buildings/     ← OSM building footprints (COMPLETED)
-│   ├── processed/             ← Phase 3 & 4 outputs
+│   ├── processed/             ← Phase 3–6 outputs
 │   │   ├── phase3/            ← Phase 3 outputs
-│   │   └── phase4/            ← Phase 4 outputs
-│   └── final/                 ← Phase 5+ outputs
+│   │   ├── phase4/            ← Phase 4 outputs
+│   │   ├── phase5/            ← Phase 5 outputs
+│   │   └── phase6/            ← Phase 6 outputs (rasters, hotspots, tables, figures, reports, models)
 │
 ├── notebooks/                 ← Jupyter notebooks (Phase 3+)
 │
@@ -352,6 +403,17 @@ GreenGrid-AI/
 │   │   ├── pipeline.py
 │   │   └── validate_features.py
 │   ├── models/                ← Phase 5–9 scripts
+│   ├── severity/              ← Phase 6 scripts
+│   │   ├── config.py
+│   │   ├── model.py
+│   │   ├── fullgrid.py
+│   │   ├── rasters.py
+│   │   ├── pipeline.py
+│   │   ├── hotspots.py
+│   │   ├── hotspot_stats.py
+│   │   ├── analytics.py
+│   │   ├── figures.py
+│   │   └── validate_severity.py
 │   └── utils/                 ← Shared utilities
 │
 ├── gee/                       ← Google Earth Engine scripts
@@ -365,7 +427,9 @@ GreenGrid-AI/
 │   ├── phase2_dataset_report.md
 │   ├── phase2_validation_report.md
 │   ├── phase3_preprocessing_report.md
-│   └── phase4_feature_extraction_report.md
+│   ├── phase4_feature_extraction_report.md
+│   ├── phase5_uhi_detection_report.md
+│   └── phase6_uhi_severity_mapping_report.md
 │
 ├── dataset_metadata.csv       ← Phase 2 dataset catalog
 ├── requirements.txt           ← Python dependencies
