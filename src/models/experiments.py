@@ -313,7 +313,13 @@ def run_temporal_validation(
             "thresholds_test": split["thresholds_test"],
         }
 
-    for train_year, test_year in [(2022, 2026), (2026, 2022)]:
+    # Adjacent-year pairs (forward and backward) plus the original endpoint
+    # leap, so temporal generalization is tested at every gap in the series.
+    years = sorted(df["year"].unique())
+    pairs = [(a, b) for a, b in zip(years, years[1:])] + [(b, a) for a, b in zip(years, years[1:])]
+    pairs += [(years[0], years[-1]), (years[-1], years[0])]
+
+    for train_year, test_year in pairs:
         for model_name in ["Random Forest", "XGBoost"]:
             results.append(run_one_direction(train_year, test_year, model_name))
 

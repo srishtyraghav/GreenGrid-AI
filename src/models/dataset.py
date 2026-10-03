@@ -40,9 +40,16 @@ def load_phase4_dataset(path: str = INPUT_DATASET_CSV) -> pd.DataFrame:
     # Ensure year is integer.
     df[YEAR_VAR] = df[YEAR_VAR].astype(int)
 
-    # landuse_class is categorical; keep as integer-like for one-hot encoding.
+    # Categorical columns are integer-like for one-hot encoding. Rows with a
+    # missing categorical value (e.g. lulc_class on the 0.2% unfilled edge)
+    # are dropped — a handful of rows at most.
+    n_before = len(df)
+    df = df.dropna(subset=CATEGORICAL_VARS).reset_index(drop=True)
     for col in CATEGORICAL_VARS:
         df[col] = df[col].astype(int)
+    n_dropped = n_before - len(df)
+    if n_dropped:
+        print(f"[DATASET] dropped {n_dropped} rows with missing categorical values")
 
     return df
 

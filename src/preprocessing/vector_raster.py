@@ -253,12 +253,76 @@ def rasterize_distance_layer(
     }
 
 
+def process_lulc_layers() -> Dict:
+    """Resample Dynamic World LULC rasters (10 m, categorical) to the 30 m grid.
+
+    Two steps per year:
+      1. GAP-FILL: monsoon cloud masking leaves the July label mosaic sparse
+         (2022: 4% valid, 2025: 1% valid). Missing 10 m pixels take the label
+         of their nearest valid pixel (categorical nearest-fill) so the layer
+         covers the full study area.
+      2. Aggregate 10 m -> 30 m by nearest neighbour on the filled layer
+         (preserves class codes).
+
+    Existence-guarded: years without a raw export are skipped with a note.
+    Raw files: data/raw/lulc/<year>_07/lulc_<year>_10m.tif.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.warp import reproject
+    from scipy import ndimage
+
+    from .align import get_reference_profile
+
+    results = {}
+    ref_profile = get_reference_profile()
+    for year in config.YEARS:
+        raw = config.RAW_DIR / "lulc" / f"{year}_07" / f"lulc_{year}_10m.tif"
+        if not raw.exists():
+            print(f"[VECTOR] LULC {year}: raw file not found ({raw}) — skipping")
+            continue
+
+        print(f"[VECTOR] LULC {year}: gap-fill + 10 m → 30 m (nearest)")
+        with rasterio.open(raw) as src:
+            arr = src.read(1).astype(np.float32)
+            src_transform, src_crs = src.transform, src.crs
+
+        valid = np.isfinite(arr)
+        n_valid = int(valid.sum())
+        if not valid.all():
+            # distance_transform_edt indices point to the nearest ZERO element:
+            # input must be ~valid so zeros mark the VALID pixels to fill from.
+            _, inds = ndimage.distance_transform_edt(~valid, return_indices=True)
+            arr = arr[inds[0], inds[1]]
+
+        dst = np.full((ref_profile["height"], ref_profile["width"]), np.nan, dtype=np.float32)
+        reproject(
+            source=arr, destination=dst,
+            src_transform=src_transform, src_crs=src_crs,
+            src_nodata=np.nan, dst_nodata=np.nan,
+            dst_transform=ref_profile["transform"], dst_crs=ref_profile["crs"],
+            resampling=rasterio.warp.Resampling.nearest,
+        )
+        out = config.MASKS_DIR / f"lulc_{year}_30m.tif"
+        profile = dict(ref_profile)
+        profile.update(count=1, dtype="float32", nodata=np.nan)
+        with rasterio.open(out, "w", **profile) as dst_ds:
+            dst_ds.write(dst, 1)
+            dst_ds.set_band_description(1, "LULC")
+        results[year] = {"output": str(out), "n_valid_10m": n_valid}
+        print(f"[VECTOR] LULC {year}: {n_valid:,} valid 10 m px before fill → full 30 m grid")
+    return results
+
+
 def process_all_vector_layers() -> Dict:
     """Convert all relevant OSM layers to 30 m rasters."""
     results = {}
 
     print("[VECTOR] Rasterizing landuse polygons")
     results["landuse"] = rasterize_landuse()
+
+    print("[VECTOR] Resampling land cover (LULC) layers")
+    results["lulc"] = process_lulc_layers()
 
     print("[VECTOR] Rasterizing roads distance")
     results["roads_distance"] = rasterize_distance_layer(

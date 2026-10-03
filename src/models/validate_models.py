@@ -34,13 +34,20 @@ from .config import (
     REFERENCE_RASTER,
     REQUIRED_INPUT_COLS,
     SPATIAL_FEATURE_COLS,
-    UHI_RASTER_2022,
-    UHI_RASTER_2026,
+    UHI_RASTERS,
     USE_MORPHOLOGY_FEATURES,
     USE_SPATIAL_FEATURES,
     VALIDATION_REPORT_JSON,
+    YEARS,
 )
 from .dataset import merge_morphology_features, merge_spatial_features
+
+# Frozen dataset facts for the 5-year series (2022–2026) under Tier 2 hybrid
+# sampling with the LULC feature: per-year INDEPENDENT samples (up to 150k per
+# year) minus the handful of rows dropped for a missing gap-filled lulc_class
+# (2 rows), so the combined modelling table is 5 x 150,000 - 2 rows.
+EXPECTED_ROWS_PER_YEAR = 150_000
+EXPECTED_TOTAL_ROWS = EXPECTED_ROWS_PER_YEAR * len(YEARS) - 2  # 749,998
 
 
 def _check(name: str, category: str, condition: bool, message: str) -> Dict:
@@ -99,7 +106,7 @@ def validate_dataset_integrity(df: pd.DataFrame) -> List[Dict]:
         _check(
             "Expected years exist",
             "dataset",
-            set(df["year"].unique()) == {2022, 2026},
+            set(df["year"].unique()) == set(YEARS),
             f"Years: {sorted(df['year'].unique())}",
         )
     )
@@ -107,8 +114,8 @@ def validate_dataset_integrity(df: pd.DataFrame) -> List[Dict]:
         _check(
             "Expected row count",
             "dataset",
-            len(df) == 300_000,
-            f"Rows: {len(df)}",
+            len(df) == EXPECTED_TOTAL_ROWS,
+            f"Rows: {len(df)} (expected {EXPECTED_TOTAL_ROWS})",
         )
     )
     checks.append(
@@ -207,7 +214,7 @@ def validate_predictions(predictions: pd.DataFrame) -> List[Dict]:
         _check(
             "Years preserved",
             "predictions",
-            set(predictions["year"].unique()) == {2022, 2026},
+            set(predictions["year"].unique()) == set(YEARS),
             f"Years: {sorted(predictions['year'].unique())}",
         )
     )
@@ -228,7 +235,8 @@ def validate_rasters(predictions: pd.DataFrame) -> List[Dict]:
 
     ref_profile = rasterio.open(REFERENCE_RASTER).profile
 
-    for year, raster_path in [(2022, UHI_RASTER_2022), (2026, UHI_RASTER_2026)]:
+    for year in YEARS:
+        raster_path = UHI_RASTERS[year]
         exists = Path(raster_path).exists()
         checks.append(
             _check(
@@ -298,15 +306,21 @@ def validate_rasters(predictions: pd.DataFrame) -> List[Dict]:
     return checks
 
 
-def validate_diagnostics() -> List[Dict]:
-    """Validate that required diagnostic tables were generated."""
+def validate_diagnostics(selected_model: str | None = None) -> List[Dict]:
+    """Validate that required diagnostic tables were generated.
+
+    Permutation importance is only produced when Random Forest is selected
+    (the pipeline computes it for RF only), so it is not required otherwise.
+    """
     checks = []
-    for name, path in [
+    diagnostic_tables = [
         ("OOF predictions", OOF_PREDICTIONS_CSV),
         ("Confusion matrices", CONFUSION_MATRICES_CSV),
         ("Boundary case analysis", BOUNDARY_CASE_ANALYSIS_CSV),
-        ("Permutation importance", PERMUTATION_IMPORTANCE_CSV),
-    ]:
+    ]
+    if selected_model in (None, "Random Forest"):
+        diagnostic_tables.append(("Permutation importance", PERMUTATION_IMPORTANCE_CSV))
+    for name, path in diagnostic_tables:
         checks.append(
             _check(
                 f"{name} file exists",
@@ -529,7 +543,8 @@ def run_validation(output_path: str = VALIDATION_REPORT_JSON) -> Dict:
     checks.extend(validate_spatial_folds(df))
     checks.extend(validate_predictions(predictions))
     checks.extend(validate_rasters(predictions))
-    checks.extend(validate_diagnostics())
+    selected_model = metadata.get("model_selection", {}).get("selected_model")
+    checks.extend(validate_diagnostics(selected_model))
     checks.extend(validate_generalization_audit(df))
 
     summary = {

@@ -16,15 +16,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from features.config import (
-    L9_LST_2022,
-    L9_LST_2026,
+    L9_LST_RASTERS,
     PHASE4_MAPS_DIR,
-    S2_NDBI_2022,
-    S2_NDBI_2026,
-    S2_NDVI_2022,
-    S2_NDVI_2026,
-    VEGETATION_COVER_RASTER_2022,
-    VEGETATION_COVER_RASTER_2026,
+    S2_NDBI_RASTERS,
+    S2_NDVI_RASTERS,
+    VEGETATION_COVER_RASTERS,
+    YEARS,
 )
 from features.io import read_raster_array
 
@@ -46,96 +43,29 @@ class MapSpec:
     colorbar_label: str = ""
 
 
-# Authoritative map catalogue
+# Authoritative map catalogue — built for every year in YEARS.
+# (variable, raster set, title, cmap, vmin, vmax, unit, colorbar label)
+_MAP_DEFS = [
+    ("lst", L9_LST_RASTERS, "Land Surface Temperature (LST)", "hot", None, None, "°C", "LST (°C)"),
+    ("ndvi", S2_NDVI_RASTERS, "Normalised Difference Vegetation Index (NDVI)", "RdYlGn", -0.2, 1.0, "unitless", "NDVI"),
+    ("ndbi", S2_NDBI_RASTERS, "Normalised Difference Built-up Index (NDBI)", "Spectral_r", -0.5, 0.5, "unitless", "NDBI"),
+    ("vegetation_cover", VEGETATION_COVER_RASTERS, "Proportional Vegetation Cover", "YlGn", 0.0, 1.0, "fraction", "Vegetation cover fraction"),
+]
+
 MAP_CATALOGUE: List[MapSpec] = [
     MapSpec(
-        variable="lst",
-        year=2022,
-        raster_path=L9_LST_2022,
-        title="Land Surface Temperature (LST) — 2022",
-        cmap="hot",
-        vmin=None,
-        vmax=None,
-        unit="°C",
-        colorbar_label="LST (°C)",
-    ),
-    MapSpec(
-        variable="lst",
-        year=2026,
-        raster_path=L9_LST_2026,
-        title="Land Surface Temperature (LST) — 2026",
-        cmap="hot",
-        vmin=None,
-        vmax=None,
-        unit="°C",
-        colorbar_label="LST (°C)",
-    ),
-    MapSpec(
-        variable="ndvi",
-        year=2022,
-        raster_path=S2_NDVI_2022,
-        title="Normalised Difference Vegetation Index (NDVI) — 2022",
-        cmap="RdYlGn",
-        vmin=-0.2,
-        vmax=1.0,
-        unit="unitless",
-        colorbar_label="NDVI",
-    ),
-    MapSpec(
-        variable="ndvi",
-        year=2026,
-        raster_path=S2_NDVI_2026,
-        title="Normalised Difference Vegetation Index (NDVI) — 2026",
-        cmap="RdYlGn",
-        vmin=-0.2,
-        vmax=1.0,
-        unit="unitless",
-        colorbar_label="NDVI",
-    ),
-    MapSpec(
-        variable="ndbi",
-        year=2022,
-        raster_path=S2_NDBI_2022,
-        title="Normalised Difference Built-up Index (NDBI) — 2022",
-        cmap="Spectral_r",
-        vmin=-0.5,
-        vmax=0.5,
-        unit="unitless",
-        colorbar_label="NDBI",
-    ),
-    MapSpec(
-        variable="ndbi",
-        year=2026,
-        raster_path=S2_NDBI_2026,
-        title="Normalised Difference Built-up Index (NDBI) — 2026",
-        cmap="Spectral_r",
-        vmin=-0.5,
-        vmax=0.5,
-        unit="unitless",
-        colorbar_label="NDBI",
-    ),
-    MapSpec(
-        variable="vegetation_cover",
-        year=2022,
-        raster_path=VEGETATION_COVER_RASTER_2022,
-        title="Proportional Vegetation Cover — 2022",
-        cmap="YlGn",
-        vmin=0.0,
-        vmax=1.0,
-        unit="fraction",
-        colorbar_label="Vegetation cover fraction",
-    ),
-    MapSpec(
-        variable="vegetation_cover",
-        year=2026,
-        raster_path=VEGETATION_COVER_RASTER_2026,
-        title="Proportional Vegetation Cover — 2026",
-        cmap="YlGn",
-        vmin=0.0,
-        vmax=1.0,
-        unit="fraction",
-        colorbar_label="Vegetation cover fraction",
-    ),
+        variable=variable,
+        year=year,
+        raster_path=raster_set[year],
+        title=f"{title} — {year}",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        unit=unit,
+        colorbar_label=colorbar_label,
+    )
+    for variable, raster_set, title, cmap, vmin, vmax, unit, colorbar_label in _MAP_DEFS
+    for year in YEARS
 ]
 
 

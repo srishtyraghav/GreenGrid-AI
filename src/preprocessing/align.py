@@ -123,11 +123,19 @@ def align_landsat9_indices(indices_dir: Path = config.INDICES_DIR, aligned_dir: 
     Ensure all Landsat 9 index rasters are on the common 30 m grid.
 
     Because Landsat 9 is already 30 m and shares the reference transform,
-    this step typically copies/verifies rather than resamples.
+    this step typically copies/verifies rather than resamples. Runs for the
+    monthly composites of all YEARS plus any best-scene products on disk.
     """
     aligned_dir.mkdir(parents=True, exist_ok=True)
-    products = ["l9_2022_best", "l9_2022_composite", "l9_2026_best", "l9_2026_composite"]
-    index_types = ["ndvi", "ndbi", "lst"]
+    products = [f"l9_{year}_composite" for year in config.YEARS]
+    products += [
+        f"l9_{year}_best"
+        for year in config.YEARS
+        if (config.LANDSAT9_DIR / f"{year}_07" / f"landsat9_{year}_07_best_scene_30m.tif").exists()
+    ]
+    # Tier 1: NDMI / MNDWI / BSI are produced for every product alongside
+    # NDVI / NDBI / LST.
+    index_types = ["ndvi", "ndbi", "lst", "ndmi", "mndwi", "bsi"]
 
     results = {}
     for prod in products:
@@ -159,18 +167,20 @@ def align_sentinel2_indices(indices_dir: Path = config.INDICES_DIR, aligned_dir:
     - NDBI native 20 m → 30 m using ``average`` aggregation.
 
     This is downsampling (aggregation), not reprojection, because the CRS is
-    unchanged.
+    unchanged. Runs for all YEARS.
     """
     aligned_dir.mkdir(parents=True, exist_ok=True)
-    products = ["s2_2022", "s2_2026"]
+    products = [f"s2_{year}" for year in config.YEARS]
     results = {}
 
     for prod in products:
         ndvi_src = indices_dir / f"{prod}_ndvi_native_10m.tif"
         ndbi_src = indices_dir / f"{prod}_ndbi_native_20m.tif"
+        ndre_src = indices_dir / f"{prod}_ndre_native_20m.tif"
 
         ndvi_dst = aligned_dir / f"{prod}_ndvi_30m.tif"
         ndbi_dst = aligned_dir / f"{prod}_ndbi_30m.tif"
+        ndre_dst = aligned_dir / f"{prod}_ndre_30m.tif"
 
         print(f"[ALIGN] Aggregating {prod} NDVI 10 m → 30 m (average)")
         resample_to_reference(ndvi_src, ndvi_dst, resampling=Resampling.average, band_name="NDVI")
@@ -178,7 +188,10 @@ def align_sentinel2_indices(indices_dir: Path = config.INDICES_DIR, aligned_dir:
         print(f"[ALIGN] Aggregating {prod} NDBI 20 m → 30 m (average)")
         resample_to_reference(ndbi_src, ndbi_dst, resampling=Resampling.average, band_name="NDBI")
 
-        results[prod] = {"ndvi": str(ndvi_dst), "ndbi": str(ndbi_dst)}
+        print(f"[ALIGN] Aggregating {prod} NDRE 20 m → 30 m (average)")
+        resample_to_reference(ndre_src, ndre_dst, resampling=Resampling.average, band_name="NDRE")
+
+        results[prod] = {"ndvi": str(ndvi_dst), "ndbi": str(ndbi_dst), "ndre": str(ndre_dst)}
     return results
 
 

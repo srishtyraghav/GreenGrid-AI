@@ -26,10 +26,14 @@ from .config import (
 WINDOW_SIZES = [3, 5, 11]
 
 # Base features for which neighbourhood means are computed.
+# Tier 1: ndmi and bsi added — moisture and bare-soil context at
+# neighbourhood scale carries heat-relevant signal.
 SPATIAL_FEATURE_BASES = [
     "ndvi",
     "ndbi",
     "vegetation_cover",
+    "ndmi",
+    "bsi",
     "dist_road_m",
     "dist_vegetation_m",
     "dist_building_m",
@@ -123,25 +127,23 @@ def load_raster_for_feature(feature_name: str, year: int) -> Tuple[np.ndarray, r
         BUILDINGS_DISTANCE,
         LANDUSE_RASTER,
         ROADS_DISTANCE,
-        S2_NDBI_2022,
-        S2_NDBI_2026,
-        S2_NDVI_2022,
-        S2_NDVI_2026,
-        VEGETATION_COVER_RASTER_2022,
-        VEGETATION_COVER_RASTER_2026,
+        S2_NDBI_RASTERS,
+        S2_NDVI_RASTERS,
+        L9_NDMI_RASTERS,
+        L9_BSI_RASTERS,
+        VEGETATION_COVER_RASTERS,
         VEGETATION_DISTANCE,
     )
 
     feature_to_path = {
-        "ndvi": {2022: S2_NDVI_2022, 2026: S2_NDVI_2026},
-        "ndbi": {2022: S2_NDBI_2022, 2026: S2_NDBI_2026},
-        "vegetation_cover": {
-            2022: VEGETATION_COVER_RASTER_2022,
-            2026: VEGETATION_COVER_RASTER_2026,
-        },
-        "dist_road_m": {2022: ROADS_DISTANCE, 2026: ROADS_DISTANCE},
-        "dist_vegetation_m": {2022: VEGETATION_DISTANCE, 2026: VEGETATION_DISTANCE},
-        "dist_building_m": {2022: BUILDINGS_DISTANCE, 2026: BUILDINGS_DISTANCE},
+        "ndvi": S2_NDVI_RASTERS,
+        "ndbi": S2_NDBI_RASTERS,
+        "vegetation_cover": VEGETATION_COVER_RASTERS,
+        "ndmi": L9_NDMI_RASTERS,
+        "bsi": L9_BSI_RASTERS,
+        "dist_road_m": {y: ROADS_DISTANCE for y in S2_NDVI_RASTERS},
+        "dist_vegetation_m": {y: VEGETATION_DISTANCE for y in S2_NDVI_RASTERS},
+        "dist_building_m": {y: BUILDINGS_DISTANCE for y in S2_NDVI_RASTERS},
     }
 
     path = feature_to_path[feature_name][year]

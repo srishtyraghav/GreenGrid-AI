@@ -30,39 +30,47 @@ from features.config import (
     BUILDINGS_DISTANCE,
     COMBINED_DATASET_CSV,
     FEATURE_METADATA_JSON,
-    L9_LST_2022,
-    L9_LST_2026,
+    L9_BSI_RASTERS,
+    L9_LST_RASTERS,
+    L9_MNDWI_RASTERS,
+    L9_NDMI_RASTERS,
     LANDUSE_RASTER,
+    LULC_AVAILABLE,
+    LULC_RASTERS,
     PHASE3_FEATURE_TABLE,
     ROADS_DISTANCE,
-    S2_NDBI_2022,
-    S2_NDBI_2026,
-    S2_NDVI_2022,
-    S2_NDVI_2026,
-    VEGETATION_COVER_RASTER_2022,
-    VEGETATION_COVER_RASTER_2026,
+    S2_NDBI_RASTERS,
+    S2_NDRE_RASTERS,
+    S2_NDVI_RASTERS,
+    VEGETATION_COVER_RASTERS,
     VEGETATION_DISTANCE,
+    YEARS,
 )
 from features.io import read_raster_array, read_feature_table, write_csv, write_json
 
 
-# Mapping of year → authoritative raster paths
+# Mapping of year → authoritative raster paths (all YEARS)
 YEARLY_RASTERS = {
-    2022: {
-        "lst": L9_LST_2022,
-        "ndvi": S2_NDVI_2022,
-        "ndbi": S2_NDBI_2022,
-        "vegetation_cover": VEGETATION_COVER_RASTER_2022,
-    },
-    2026: {
-        "lst": L9_LST_2026,
-        "ndvi": S2_NDVI_2026,
-        "ndbi": S2_NDBI_2026,
-        "vegetation_cover": VEGETATION_COVER_RASTER_2026,
-    },
+    year: {
+        "lst": L9_LST_RASTERS[year],
+        "ndvi": S2_NDVI_RASTERS[year],
+        "ndbi": S2_NDBI_RASTERS[year],
+        "vegetation_cover": VEGETATION_COVER_RASTERS[year],
+        "ndmi": L9_NDMI_RASTERS[year],
+        "mndwi": L9_MNDWI_RASTERS[year],
+        "bsi": L9_BSI_RASTERS[year],
+        "ndre": S2_NDRE_RASTERS[year],
+    }
+    for year in YEARS
 }
 
-# Static context layers (same for both years)
+# Land cover (Dynamic World) is included only for years whose export exists.
+if LULC_AVAILABLE:
+    for year in YEARS:
+        if LULC_RASTERS[year].exists():
+            YEARLY_RASTERS[year]["lulc"] = LULC_RASTERS[year]
+
+# Static context layers (same across all years)
 STATIC_RASTERS = {
     "landuse_class": LANDUSE_RASTER,
     "dist_road_m": ROADS_DISTANCE,
@@ -120,6 +128,14 @@ def build_combined_dataset() -> pd.DataFrame:
         df_year["vegetation_cover"] = _extract_at_indices(
             rasters["vegetation_cover"], rows, cols
         )
+        # Tier 1 additions
+        df_year["ndmi"] = _extract_at_indices(rasters["ndmi"], rows, cols)
+        df_year["mndwi"] = _extract_at_indices(rasters["mndwi"], rows, cols)
+        df_year["bsi"] = _extract_at_indices(rasters["bsi"], rows, cols)
+        df_year["ndre"] = _extract_at_indices(rasters["ndre"], rows, cols)
+        if "lulc" in rasters:
+            lulc_vals = _extract_at_indices(rasters["lulc"], rows, cols)
+            df_year["lulc_class"] = pd.array(np.round(lulc_vals), dtype="Int64")
 
         # Static context layers (reuse Phase 3 values if available; otherwise
         # re-extract from rasters to ensure consistency).
@@ -129,7 +145,7 @@ def build_combined_dataset() -> pd.DataFrame:
                 continue
             df_year[col_name] = _extract_at_indices(raster_path, rows, cols)
 
-        # Select final column order
+        # Select final column order (lulc_class appended when available)
         final_cols = [
             "lon",
             "lat",
@@ -141,14 +157,29 @@ def build_combined_dataset() -> pd.DataFrame:
             "ndvi",
             "ndbi",
             "vegetation_cover",
+            "ndmi",
+            "mndwi",
+            "bsi",
+            "ndre",
             "landuse_class",
             "dist_road_m",
             "dist_vegetation_m",
             "dist_building_m",
         ]
+        if "lulc_class" in df_year.columns:
+            final_cols.append("lulc_class")
         frames.append(df_year[final_cols])
 
     df = pd.concat(frames, ignore_index=True)
+    # LULC is gap-filled but a ~0.2% raster edge remains unfilled; drop the
+    # handful of rows with a missing lulc_class so downstream tables carry
+    # no NaN predictors.
+    if "lulc_class" in df.columns:
+        n_before = len(df)
+        df = df.dropna(subset=["lulc_class"]).reset_index(drop=True)
+        n_dropped = n_before - len(df)
+        if n_dropped:
+            print(f"[FEATURES] dropped {n_dropped} rows with missing lulc_class")
     return df
 
 
@@ -164,6 +195,10 @@ def compute_feature_statistics(df: pd.DataFrame) -> Dict:
         "ndvi",
         "ndbi",
         "vegetation_cover",
+        "ndmi",
+        "mndwi",
+        "bsi",
+        "ndre",
         "dist_road_m",
         "dist_vegetation_m",
         "dist_building_m",
@@ -210,6 +245,10 @@ def compute_correlations(df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
         "ndvi",
         "ndbi",
         "vegetation_cover",
+        "ndmi",
+        "mndwi",
+        "bsi",
+        "ndre",
         "dist_road_m",
         "dist_vegetation_m",
         "dist_building_m",

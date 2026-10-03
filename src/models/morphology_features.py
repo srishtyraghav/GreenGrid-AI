@@ -231,12 +231,9 @@ def _load_source_rasters(year: int) -> Dict[str, np.ndarray]:
         BUILDINGS_DISTANCE,
         LANDUSE_RASTER,
         ROADS_DISTANCE,
-        S2_NDBI_2022,
-        S2_NDBI_2026,
-        S2_NDVI_2022,
-        S2_NDVI_2026,
-        VEGETATION_COVER_RASTER_2022,
-        VEGETATION_COVER_RASTER_2026,
+        S2_NDBI_RASTERS,
+        S2_NDVI_RASTERS,
+        VEGETATION_COVER_RASTERS,
         VEGETATION_DISTANCE,
     )
 
@@ -244,11 +241,9 @@ def _load_source_rasters(year: int) -> Dict[str, np.ndarray]:
         "dist_building_m": _load_raster_array(BUILDINGS_DISTANCE),
         "dist_road_m": _load_raster_array(ROADS_DISTANCE),
         "dist_vegetation_m": _load_raster_array(VEGETATION_DISTANCE),
-        "vegetation_cover": _load_raster_array(
-            VEGETATION_COVER_RASTER_2022 if year == 2022 else VEGETATION_COVER_RASTER_2026
-        ),
-        "ndvi": _load_raster_array(S2_NDVI_2022 if year == 2022 else S2_NDVI_2026),
-        "ndbi": _load_raster_array(S2_NDBI_2022 if year == 2022 else S2_NDBI_2026),
+        "vegetation_cover": _load_raster_array(VEGETATION_COVER_RASTERS[year]),
+        "ndvi": _load_raster_array(S2_NDVI_RASTERS[year]),
+        "ndbi": _load_raster_array(S2_NDBI_RASTERS[year]),
         "landuse_class": _load_raster_array(LANDUSE_RASTER),
     }
 

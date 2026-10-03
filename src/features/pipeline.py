@@ -57,16 +57,12 @@ def run_phase4(maps: bool = True) -> Dict:
 
     # 1. Vegetation Cover
     t0 = time.time()
-    vc_stats_2022, vc_stats_2026 = derive_vegetation_cover_all_years()
+    vc_stats = derive_vegetation_cover_all_years()
     record["steps"]["vegetation_cover"] = {
         "status": "success",
         "elapsed_s": round(time.time() - t0, 3),
-        "outputs": [
-            vc_stats_2022["output_raster"],
-            vc_stats_2026["output_raster"],
-        ],
-        "2022": vc_stats_2022,
-        "2026": vc_stats_2026,
+        "outputs": [s["output_raster"] for s in vc_stats.values()],
+        "by_year": {str(year): s for year, s in vc_stats.items()},
     }
 
     # 2. Combined dataset + statistics

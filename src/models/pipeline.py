@@ -48,8 +48,6 @@ from .config import (
     PROJECT_ROOT,
     RANDOM_SEED,
     SPATIAL_FEATURE_COLS,
-    UHI_RASTER_2022,
-    UHI_RASTER_2026,
     USE_MORPHOLOGY_FEATURES,
 )
 from .dataset import (
@@ -460,7 +458,7 @@ def run_phase5(
         "validation": {
             "spatial_strategy": "GroupKFold on spatial_block_id",
             "n_folds": 5,
-            "temporal_experiments": ["2022->2026", "2026->2022"],
+            "temporal_experiments": sorted({f'{r["train_year"]}->{r["test_year"]}' for r in temporal_results}),
             "target_leakage_prevention": "CV thresholds derived from training blocks only",
         },
         "model_selection": {

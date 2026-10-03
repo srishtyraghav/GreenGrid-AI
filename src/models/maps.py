@@ -19,15 +19,13 @@ from matplotlib.colors import ListedColormap
 from .config import (
     CLASS_LABELS,
     CLASS_VALUES,
-    CONFIDENCE_RASTER_2022,
-    CONFIDENCE_RASTER_2026,
+    CONFIDENCE_RASTERS,
     INV_CLASS_MAPPING,
     PROBABILITY_RASTERS,
     REFERENCE_RASTER,
-    UHI_MAP_2022,
-    UHI_MAP_2026,
-    UHI_RASTER_2022,
-    UHI_RASTER_2026,
+    UHI_MAPS,
+    UHI_RASTERS,
+    YEARS,
 )
 
 # Categorical colormap for UHI classes.
@@ -143,7 +141,7 @@ def probabilities_to_rasters(
     confidence_raster = np.full((profile["height"], profile["width"]), nodata, dtype=np.float32)
     confidence = sub["prediction_confidence"].values[valid]
     confidence_raster[rows, cols] = confidence
-    conf_path = CONFIDENCE_RASTER_2022 if year == 2022 else CONFIDENCE_RASTER_2026
+    conf_path = CONFIDENCE_RASTERS[year]
     with rasterio.open(conf_path, "w", **profile) as dst:
         dst.write(confidence_raster, 1)
 
@@ -208,16 +206,16 @@ def generate_uhi_map(
 
 
 def generate_all_maps(df: pd.DataFrame) -> List[Dict]:
-    """Generate UHI rasters and maps for both years."""
+    """Generate UHI rasters and maps for every year in YEARS."""
     results = []
 
-    for year in (2022, 2026):
+    for year in YEARS:
         results.append(
-            predictions_to_raster(df, "predicted_class", UHI_RASTER_2022 if year == 2022 else UHI_RASTER_2026, year)
+            predictions_to_raster(df, "predicted_class", UHI_RASTERS[year], year)
         )
         results.extend(probabilities_to_rasters(df, year, PROBABILITY_RASTERS[year]))
         results.append(
-            generate_uhi_map(df, year, UHI_MAP_2022 if year == 2022 else UHI_MAP_2026)
+            generate_uhi_map(df, year, UHI_MAPS[year])
         )
 
     return results

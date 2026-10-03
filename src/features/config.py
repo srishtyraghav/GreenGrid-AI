@@ -22,6 +22,7 @@ from preprocessing.config import (  # noqa: E402
     REFERENCE_RASTER,
     TARGET_CRS,
     TARGET_RESOLUTION_M_APPROX,
+    YEARS,
 )
 
 # ---------------------------------------------------------------------------
@@ -44,15 +45,54 @@ PHASE3_ALIGNED_DIR = PROCESSED_DIR / "aligned"
 PHASE3_MASKS_DIR = PROCESSED_DIR / "masks"
 PHASE3_ML_DIR = PROCESSED_DIR / "ml"
 
-# Landsat 9 features (thermal only; LST is the authoritative thermal product)
-L9_LST_2022 = PHASE3_ALIGNED_DIR / "l9_2022_composite_lst_30m.tif"
-L9_LST_2026 = PHASE3_ALIGNED_DIR / "l9_2026_composite_lst_30m.tif"
+# Landsat 9 features (thermal only; LST is the authoritative thermal product).
+# Year-keyed raster sets cover all YEARS (July 2022–2026); the single-year
+# constants are derived from them for backward compatibility with downstream
+# phase configs.
+L9_LST_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"l9_{year}_composite_lst_30m.tif" for year in YEARS
+}
+S2_NDVI_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"s2_{year}_ndvi_30m.tif" for year in YEARS
+}
+S2_NDBI_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"s2_{year}_ndbi_30m.tif" for year in YEARS
+}
+VEGETATION_COVER_RASTERS = {
+    year: PHASE4_FEATURES_DIR / f"vegetation_cover_{year}_30m.tif" for year in YEARS
+}
+
+# Tier 1 additions: moisture / bare-soil / water (Landsat 9) and red-edge
+# vegetation stress (Sentinel-2), derived from bands already on disk.
+L9_NDMI_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"l9_{year}_composite_ndmi_30m.tif" for year in YEARS
+}
+L9_MNDWI_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"l9_{year}_composite_mndwi_30m.tif" for year in YEARS
+}
+L9_BSI_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"l9_{year}_composite_bsi_30m.tif" for year in YEARS
+}
+S2_NDRE_RASTERS = {
+    year: PHASE3_ALIGNED_DIR / f"s2_{year}_ndre_30m.tif" for year in YEARS
+}
+
+# Land cover (Dynamic World, 10 m -> 30 m). Existence-guarded: the pipeline
+# runs without it until the GEE export lands in data/raw/lulc/.
+LULC_DIR = PROJECT_ROOT / "data" / "raw" / "lulc"
+LULC_RASTERS = {
+    year: PHASE3_MASKS_DIR / f"lulc_{year}_30m.tif" for year in YEARS
+}
+LULC_AVAILABLE = any(p.exists() for p in LULC_RASTERS.values())
+
+L9_LST_2022 = L9_LST_RASTERS[2022]
+L9_LST_2026 = L9_LST_RASTERS[2026]
 
 # Sentinel-2 features (authoritative for spectral vegetation/built-up indices)
-S2_NDVI_2022 = PHASE3_ALIGNED_DIR / "s2_2022_ndvi_30m.tif"
-S2_NDVI_2026 = PHASE3_ALIGNED_DIR / "s2_2026_ndvi_30m.tif"
-S2_NDBI_2022 = PHASE3_ALIGNED_DIR / "s2_2022_ndbi_30m.tif"
-S2_NDBI_2026 = PHASE3_ALIGNED_DIR / "s2_2026_ndbi_30m.tif"
+S2_NDVI_2022 = S2_NDVI_RASTERS[2022]
+S2_NDVI_2026 = S2_NDVI_RASTERS[2026]
+S2_NDBI_2022 = S2_NDBI_RASTERS[2022]
+S2_NDBI_2026 = S2_NDBI_RASTERS[2026]
 
 # Optional Landsat 9 NDVI/NDBI for reference/comparison only.
 L9_NDVI_2022 = PHASE3_ALIGNED_DIR / "l9_2022_composite_ndvi_30m.tif"
@@ -125,8 +165,8 @@ VEGETATION_COVER_DESCRIPTION = (
 )
 
 # Naming conventions for outputs
-VEGETATION_COVER_RASTER_2022 = PHASE4_FEATURES_DIR / "vegetation_cover_2022_30m.tif"
-VEGETATION_COVER_RASTER_2026 = PHASE4_FEATURES_DIR / "vegetation_cover_2026_30m.tif"
+VEGETATION_COVER_RASTER_2022 = VEGETATION_COVER_RASTERS[2022]
+VEGETATION_COVER_RASTER_2026 = VEGETATION_COVER_RASTERS[2026]
 
 COMBINED_DATASET_CSV = PHASE4_TABLES_DIR / "combined_urban_environmental_dataset.csv"
 FEATURE_METADATA_JSON = PHASE4_DIR / "phase4_feature_metadata.json"

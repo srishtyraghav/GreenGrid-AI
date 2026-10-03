@@ -20,11 +20,10 @@ from features.config import (
     NDVI_SOIL_REFERENCE,
     NDVI_VEG_REFERENCE,
     REFERENCE_RASTER_PATH,
-    S2_NDVI_2022,
-    S2_NDVI_2026,
+    S2_NDVI_RASTERS,
     VEGETATION_COVER_DESCRIPTION,
-    VEGETATION_COVER_RASTER_2022,
-    VEGETATION_COVER_RASTER_2026,
+    VEGETATION_COVER_RASTERS,
+    YEARS,
 )
 from features.io import read_raster_array, write_single_band_raster
 
@@ -120,19 +119,18 @@ def derive_vegetation_cover_for_year(
     return stats
 
 
-def derive_vegetation_cover_all_years() -> Tuple[dict, dict]:
-    """Derive PVC for both years and return their metadata dicts."""
-    stats_2022 = derive_vegetation_cover_for_year(
-        S2_NDVI_2022, VEGETATION_COVER_RASTER_2022, year=2022
-    )
-    stats_2026 = derive_vegetation_cover_for_year(
-        S2_NDVI_2026, VEGETATION_COVER_RASTER_2026, year=2026
-    )
-    return stats_2022, stats_2026
+def derive_vegetation_cover_all_years() -> Dict[int, dict]:
+    """Derive PVC for every year in YEARS and return {year: metadata dict}."""
+    return {
+        year: derive_vegetation_cover_for_year(
+            S2_NDVI_RASTERS[year], VEGETATION_COVER_RASTERS[year], year=year
+        )
+        for year in YEARS
+    }
 
 
 if __name__ == "__main__":
-    s2022, s2026 = derive_vegetation_cover_all_years()
+    stats = derive_vegetation_cover_all_years()
     import json
 
-    print(json.dumps({"2022": s2022, "2026": s2026}, indent=2, default=str))
+    print(json.dumps({str(y): s for y, s in stats.items()}, indent=2, default=str))

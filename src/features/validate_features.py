@@ -19,36 +19,28 @@ import rasterio
 from features.config import (
     COMBINED_DATASET_CSV,
     FEATURE_METADATA_JSON,
-    L9_LST_2022,
-    L9_LST_2026,
+    L9_LST_RASTERS,
     PHASE4_MAPS_DIR,
     PIPELINE_RECORD_JSON,
     REFERENCE_RASTER_PATH,
-    S2_NDBI_2022,
-    S2_NDBI_2026,
-    S2_NDVI_2022,
-    S2_NDVI_2026,
-    VEGETATION_COVER_RASTER_2022,
-    VEGETATION_COVER_RASTER_2026,
+    S2_NDBI_RASTERS,
+    S2_NDVI_RASTERS,
+    VEGETATION_COVER_RASTERS,
+    YEARS,
 )
 from features.io import read_raster_array
 from features.vegetation_cover import calculate_proportional_vegetation_cover
 
 
-# Year-to-raster lookup for spot checks
+# Year-to-raster lookup for spot checks (all YEARS)
 YEARLY_RASTERS = {
-    2022: {
-        "lst": L9_LST_2022,
-        "ndvi": S2_NDVI_2022,
-        "ndbi": S2_NDBI_2022,
-        "vegetation_cover": VEGETATION_COVER_RASTER_2022,
-    },
-    2026: {
-        "lst": L9_LST_2026,
-        "ndvi": S2_NDVI_2026,
-        "ndbi": S2_NDBI_2026,
-        "vegetation_cover": VEGETATION_COVER_RASTER_2026,
-    },
+    year: {
+        "lst": L9_LST_RASTERS[year],
+        "ndvi": S2_NDVI_RASTERS[year],
+        "ndbi": S2_NDBI_RASTERS[year],
+        "vegetation_cover": VEGETATION_COVER_RASTERS[year],
+    }
+    for year in YEARS
 }
 
 
@@ -112,8 +104,10 @@ def validate_phase4() -> ValidationReport:
 
     # 1. Output files
     required_files = {
-        "vegetation_cover_2022": VEGETATION_COVER_RASTER_2022,
-        "vegetation_cover_2026": VEGETATION_COVER_RASTER_2026,
+        **{
+            f"vegetation_cover_{year}": VEGETATION_COVER_RASTERS[year]
+            for year in YEARS
+        },
         "combined_dataset_csv": COMBINED_DATASET_CSV,
         "feature_metadata_json": FEATURE_METADATA_JSON,
         "pipeline_record_json": PIPELINE_RECORD_JSON,
@@ -124,24 +118,17 @@ def validate_phase4() -> ValidationReport:
             all_files_exist = False
 
     expected_maps = [
-        "lst_2022.png",
-        "lst_2026.png",
-        "ndvi_2022.png",
-        "ndvi_2026.png",
-        "ndbi_2022.png",
-        "ndbi_2026.png",
-        "vegetation_cover_2022.png",
-        "vegetation_cover_2026.png",
+        f"{variable}_{year}.png"
+        for variable in ("lst", "ndvi", "ndbi", "vegetation_cover")
+        for year in YEARS
     ]
     for map_name in expected_maps:
         map_path = PHASE4_MAPS_DIR / map_name
         _check_file_exists(report, map_path, f"map_{map_name}")
 
     # 2. Vegetation cover rasters
-    for year, path in (
-        (2022, VEGETATION_COVER_RASTER_2022),
-        (2026, VEGETATION_COVER_RASTER_2026),
-    ):
+    for year in YEARS:
+        path = VEGETATION_COVER_RASTERS[year]
         if not path.exists():
             report.add("vegetation_cover", f"{year} raster loadable", "FAIL", "File missing")
             continue
@@ -177,10 +164,9 @@ def validate_phase4() -> ValidationReport:
             )
 
     # 3. Vegetation cover formula consistency
-    for year, ndvi_path, pvc_path in (
-        (2022, S2_NDVI_2022, VEGETATION_COVER_RASTER_2022),
-        (2026, S2_NDVI_2026, VEGETATION_COVER_RASTER_2026),
-    ):
+    for year in YEARS:
+        ndvi_path = S2_NDVI_RASTERS[year]
+        pvc_path = VEGETATION_COVER_RASTERS[year]
         if not (ndvi_path.exists() and pvc_path.exists()):
             report.add(
                 "vegetation_cover",
@@ -245,7 +231,7 @@ def validate_phase4() -> ValidationReport:
 
         # Year separation
         years = sorted(df["year"].unique().tolist())
-        if years == [2022, 2026]:
+        if years == list(YEARS):
             report.add("dataset", "Year values", "PASS", f"Years: {years}")
         else:
             report.add("dataset", "Year values", "FAIL", f"Unexpected years: {years}")

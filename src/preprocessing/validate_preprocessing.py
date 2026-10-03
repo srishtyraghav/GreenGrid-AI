@@ -134,27 +134,23 @@ def validate() -> bool:
     report.add("Reference", "Reference raster", "PASS", f"{ref_profile['width']}x{ref_profile['height']} @ ~{config.TARGET_RESOLUTION_M_APPROX} m nominal (EPSG:4326)")
 
     # Required output files
-    required_files = {
-        "L9 2022 NDVI": config.ALIGNED_DIR / "l9_2022_composite_ndvi_30m.tif",
-        "L9 2022 NDBI": config.ALIGNED_DIR / "l9_2022_composite_ndbi_30m.tif",
-        "L9 2022 LST": config.ALIGNED_DIR / "l9_2022_composite_lst_30m.tif",
-        "L9 2026 NDVI": config.ALIGNED_DIR / "l9_2026_composite_ndvi_30m.tif",
-        "L9 2026 NDBI": config.ALIGNED_DIR / "l9_2026_composite_ndbi_30m.tif",
-        "L9 2026 LST": config.ALIGNED_DIR / "l9_2026_composite_lst_30m.tif",
-        "S2 2022 NDVI": config.ALIGNED_DIR / "s2_2022_ndvi_30m.tif",
-        "S2 2022 NDBI": config.ALIGNED_DIR / "s2_2022_ndbi_30m.tif",
-        "S2 2026 NDVI": config.ALIGNED_DIR / "s2_2026_ndvi_30m.tif",
-        "S2 2026 NDBI": config.ALIGNED_DIR / "s2_2026_ndbi_30m.tif",
+    required_files = {}
+    for year in config.YEARS:
+        required_files[f"L9 {year} NDVI"] = config.ALIGNED_DIR / f"l9_{year}_composite_ndvi_30m.tif"
+        required_files[f"L9 {year} NDBI"] = config.ALIGNED_DIR / f"l9_{year}_composite_ndbi_30m.tif"
+        required_files[f"L9 {year} LST"] = config.ALIGNED_DIR / f"l9_{year}_composite_lst_30m.tif"
+        required_files[f"S2 {year} NDVI"] = config.ALIGNED_DIR / f"s2_{year}_ndvi_30m.tif"
+        required_files[f"S2 {year} NDBI"] = config.ALIGNED_DIR / f"s2_{year}_ndbi_30m.tif"
+        required_files[f"Feature table {year}"] = config.FEATURES_DIR / f"feature_table_{year}.csv"
+    required_files.update({
         "Valid mask": config.MASKS_DIR / "valid_mask_30m.tif",
         "Landuse raster": config.MASKS_DIR / "landuse_raster_30m.tif",
         "Roads distance": config.MASKS_DIR / "roads_distance_30m.tif",
         "Vegetation distance": config.MASKS_DIR / "vegetation_distance_30m.tif",
         "Buildings distance": config.MASKS_DIR / "buildings_distance_30m.tif",
-        "Feature table 2022": config.FEATURES_DIR / "feature_table_2022.csv",
-        "Feature table 2026": config.FEATURES_DIR / "feature_table_2026.csv",
         "Feature table": config.FEATURES_DIR / "feature_table.csv",
         "Feature metadata": config.FEATURES_DIR / "feature_metadata.json",
-    }
+    })
 
     for name, path in required_files.items():
         check_file_exists(path, report, "Files", name)
@@ -165,21 +161,17 @@ def validate() -> bool:
         check_raster_grid(path, ref_profile, report, "Grid Alignment", path.name)
 
     # Index ranges
-    check_index_ranges(config.ALIGNED_DIR / "l9_2022_composite_ndvi_30m.tif", report, "L9 2022 NDVI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "l9_2026_composite_ndvi_30m.tif", report, "L9 2026 NDVI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "s2_2022_ndvi_30m.tif", report, "S2 2022 NDVI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "s2_2026_ndvi_30m.tif", report, "S2 2026 NDVI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "l9_2022_composite_ndbi_30m.tif", report, "L9 2022 NDBI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "l9_2026_composite_ndbi_30m.tif", report, "L9 2026 NDBI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "s2_2022_ndbi_30m.tif", report, "S2 2022 NDBI", (-1.0, 1.0))
-    check_index_ranges(config.ALIGNED_DIR / "s2_2026_ndbi_30m.tif", report, "S2 2026 NDBI", (-1.0, 1.0))
-    # LST: plausible July daytime range for Delhi
-    check_index_ranges(config.ALIGNED_DIR / "l9_2022_composite_lst_30m.tif", report, "L9 2022 LST", (15.0, 65.0))
-    check_index_ranges(config.ALIGNED_DIR / "l9_2026_composite_lst_30m.tif", report, "L9 2026 LST", (15.0, 65.0))
+    for year in config.YEARS:
+        check_index_ranges(config.ALIGNED_DIR / f"l9_{year}_composite_ndvi_30m.tif", report, f"L9 {year} NDVI", (-1.0, 1.0))
+        check_index_ranges(config.ALIGNED_DIR / f"s2_{year}_ndvi_30m.tif", report, f"S2 {year} NDVI", (-1.0, 1.0))
+        check_index_ranges(config.ALIGNED_DIR / f"l9_{year}_composite_ndbi_30m.tif", report, f"L9 {year} NDBI", (-1.0, 1.0))
+        check_index_ranges(config.ALIGNED_DIR / f"s2_{year}_ndbi_30m.tif", report, f"S2 {year} NDBI", (-1.0, 1.0))
+        # LST: plausible July daytime range for Delhi
+        check_index_ranges(config.ALIGNED_DIR / f"l9_{year}_composite_lst_30m.tif", report, f"L9 {year} LST", (15.0, 65.0))
 
     # Feature table integrity
-    check_no_inf_nan_in_feature_table(config.FEATURES_DIR / "feature_table_2022.csv", report, "feature_table_2022.csv")
-    check_no_inf_nan_in_feature_table(config.FEATURES_DIR / "feature_table_2026.csv", report, "feature_table_2026.csv")
+    for year in config.YEARS:
+        check_no_inf_nan_in_feature_table(config.FEATURES_DIR / f"feature_table_{year}.csv", report, f"feature_table_{year}.csv")
     check_no_inf_nan_in_feature_table(config.FEATURES_DIR / "feature_table.csv", report, "feature_table.csv")
 
     # Expected columns in the combined long-format table

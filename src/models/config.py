@@ -19,9 +19,11 @@ if str(src_dir) not in sys.path:
 
 from features.config import (  # noqa: E402
     COMBINED_DATASET_CSV,
+    LULC_AVAILABLE,
     PHASE4_DIR,
     REFERENCE_RASTER_PATH,
     RANDOM_SEED as FEATURES_RANDOM_SEED,
+    YEARS,
 )
 
 # ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ YEAR_VAR = "year"
 
 IDENTIFIER_VARS = ["lon", "lat", "row", "col"]
 
-CATEGORICAL_VARS = ["landuse_class"]
+CATEGORICAL_VARS = ["landuse_class"] + (["lulc_class"] if LULC_AVAILABLE else [])
 
 # ---------------------------------------------------------------------------
 # Spatial neighbourhood features
@@ -71,6 +73,8 @@ SPATIAL_FEATURE_BASES = [
     "ndvi",
     "ndbi",
     "vegetation_cover",
+    "ndmi",
+    "bsi",
     "dist_road_m",
     "dist_vegetation_m",
     "dist_building_m",
@@ -115,11 +119,18 @@ def get_morphology_feature_columns() -> list[str]:
 MORPHOLOGY_FEATURE_COLS = get_morphology_feature_columns()
 
 # Base predictors (no spatial context).
+# Tier 1 additions (ndmi/mndwi/bsi/ndre) derive from bands already present in
+# the Phase 2 exports and are treated exactly like the base spectral features.
 BASE_PREDICTOR_VARS = [
     "ndvi",
     "ndbi",
     "vegetation_cover",
+    "ndmi",
+    "mndwi",
+    "bsi",
+    "ndre",
     "landuse_class",
+] + (["lulc_class"] if LULC_AVAILABLE else []) + [
     "dist_road_m",
     "dist_vegetation_m",
     "dist_building_m",
@@ -200,11 +211,19 @@ BOUNDARY_CASE_ANALYSIS_CSV = PHASE5_TABLES_DIR / "boundary_case_analysis.csv"
 PERMUTATION_IMPORTANCE_CSV = PHASE5_TABLES_DIR / "permutation_importance.csv"
 MORPHOLOGY_FEATURES_CSV = PHASE5_TABLES_DIR / "morphology_features.csv"
 
-UHI_RASTER_2022 = PHASE5_PREDICTIONS_DIR / "uhi_2022.tif"
-UHI_RASTER_2026 = PHASE5_PREDICTIONS_DIR / "uhi_2026.tif"
+# Year-keyed prediction/map outputs (all YEARS). The _2022/_2026 aliases are
+# kept for backward compatibility with downstream phase configs.
+UHI_RASTERS = {
+    year: PHASE5_PREDICTIONS_DIR / f"uhi_{year}.tif" for year in YEARS
+}
+UHI_MAPS = {
+    year: PHASE5_MAPS_DIR / f"uhi_{year}.png" for year in YEARS
+}
+UHI_RASTER_2022 = UHI_RASTERS[2022]
+UHI_RASTER_2026 = UHI_RASTERS[2026]
 
-UHI_MAP_2022 = PHASE5_MAPS_DIR / "uhi_2022.png"
-UHI_MAP_2026 = PHASE5_MAPS_DIR / "uhi_2026.png"
+UHI_MAP_2022 = UHI_MAPS[2022]
+UHI_MAP_2026 = UHI_MAPS[2026]
 
 # ---------------------------------------------------------------------------
 # Probability outputs
@@ -214,11 +233,14 @@ PROBABILITY_RASTERS = {
         label: PHASE5_PROBABILITIES_DIR / f"probability_{label.lower()}_{year}.tif"
         for label in CLASS_LABELS
     }
-    for year in (2022, 2026)
+    for year in YEARS
 }
 
-CONFIDENCE_RASTER_2022 = PHASE5_PROBABILITIES_DIR / "confidence_2022.tif"
-CONFIDENCE_RASTER_2026 = PHASE5_PROBABILITIES_DIR / "confidence_2026.tif"
+CONFIDENCE_RASTERS = {
+    year: PHASE5_PROBABILITIES_DIR / f"confidence_{year}.tif" for year in YEARS
+}
+CONFIDENCE_RASTER_2022 = CONFIDENCE_RASTERS[2022]
+CONFIDENCE_RASTER_2026 = CONFIDENCE_RASTERS[2026]
 
 __all__ = [
     "PROJECT_ROOT",
@@ -267,11 +289,14 @@ __all__ = [
     "BOUNDARY_CASE_ANALYSIS_CSV",
     "PERMUTATION_IMPORTANCE_CSV",
     "MORPHOLOGY_FEATURES_CSV",
+    "UHI_RASTERS",
+    "UHI_MAPS",
     "UHI_RASTER_2022",
     "UHI_RASTER_2026",
     "UHI_MAP_2022",
     "UHI_MAP_2026",
     "PROBABILITY_RASTERS",
+    "CONFIDENCE_RASTERS",
     "CONFIDENCE_RASTER_2022",
     "CONFIDENCE_RASTER_2026",
 ]

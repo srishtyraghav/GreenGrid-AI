@@ -106,5 +106,13 @@ N_SPATIAL_BLOCKS = 5
 # ─── Sampling ───────────────────────────────────────────────────────────────
 # Maximum number of valid pixels to extract for the ML-ready feature table.
 # Using a sample keeps the CSV tractable while preserving spatial coverage.
+# This budget is applied PER YEAR (see build_feature_table).
 MAX_FEATURE_SAMPLES = 150_000
 RANDOM_SEED = 42
+
+# ─── Multi-year extension ───────────────────────────────────────────────────
+# The original project used July 2022 (baseline) and July 2026 (current).
+# July 2023 / 2024 / 2025 were added later with the identical GEE recipe to
+# improve temporal coverage and geographic generalization. Every per-year
+# product loop in this package iterates over YEARS.
+YEARS = [2022, 2023, 2024, 2025, 2026]

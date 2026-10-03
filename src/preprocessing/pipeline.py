@@ -66,18 +66,13 @@ def run_phase3() -> Dict:
 
     # 4. Build valid-pixel mask
     print("\n[PIPELINE] Step 4/6: Building combined valid-pixel mask")
-    mask_paths = {
-        "l9_2022_ndvi": config.ALIGNED_DIR / "l9_2022_composite_ndvi_30m.tif",
-        "l9_2026_ndvi": config.ALIGNED_DIR / "l9_2026_composite_ndvi_30m.tif",
-        "l9_2022_ndbi": config.ALIGNED_DIR / "l9_2022_composite_ndbi_30m.tif",
-        "l9_2026_ndbi": config.ALIGNED_DIR / "l9_2026_composite_ndbi_30m.tif",
-        "l9_2022_lst": config.ALIGNED_DIR / "l9_2022_composite_lst_30m.tif",
-        "l9_2026_lst": config.ALIGNED_DIR / "l9_2026_composite_lst_30m.tif",
-        "s2_2022_ndvi": config.ALIGNED_DIR / "s2_2022_ndvi_30m.tif",
-        "s2_2026_ndvi": config.ALIGNED_DIR / "s2_2026_ndvi_30m.tif",
-        "s2_2022_ndbi": config.ALIGNED_DIR / "s2_2022_ndbi_30m.tif",
-        "s2_2026_ndbi": config.ALIGNED_DIR / "s2_2026_ndbi_30m.tif",
-    }
+    mask_paths = {}
+    for year in config.YEARS:
+        mask_paths[f"l9_{year}_ndvi"] = config.ALIGNED_DIR / f"l9_{year}_composite_ndvi_30m.tif"
+        mask_paths[f"l9_{year}_ndbi"] = config.ALIGNED_DIR / f"l9_{year}_composite_ndbi_30m.tif"
+        mask_paths[f"l9_{year}_lst"] = config.ALIGNED_DIR / f"l9_{year}_composite_lst_30m.tif"
+        mask_paths[f"s2_{year}_ndvi"] = config.ALIGNED_DIR / f"s2_{year}_ndvi_30m.tif"
+        mask_paths[f"s2_{year}_ndbi"] = config.ALIGNED_DIR / f"s2_{year}_ndbi_30m.tif"
     record["valid_mask"] = create_combined_valid_mask(
         reference_path=config.REFERENCE_RASTER,
         mask_paths=mask_paths,

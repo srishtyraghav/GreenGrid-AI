@@ -94,16 +94,16 @@ def inspect_source_nan_patterns() -> Dict:
     This is a read-only diagnostic used to justify the decision to keep the
     existing GEE cloud mask.
     """
-    sources = {
-        "l9_2022_best": config.LANDSAT9_DIR / "2022_07" / "landsat9_2022_07_best_scene_30m.tif",
-        "l9_2022_composite": config.LANDSAT9_DIR / "2022_07" / "landsat9_2022_07_composite_30m.tif",
-        "l9_2026_best": config.LANDSAT9_DIR / "2026_07" / "landsat9_2026_07_best_scene_30m.tif",
-        "l9_2026_composite": config.LANDSAT9_DIR / "2026_07" / "landsat9_2026_07_composite_30m.tif",
-        "s2_2022_10m": config.SENTINEL2_DIR / "2022_07" / "sentinel2_2022_07_10m_composite.tif",
-        "s2_2022_20m": config.SENTINEL2_DIR / "2022_07" / "sentinel2_2022_07_20m_composite.tif",
-        "s2_2026_10m": config.SENTINEL2_DIR / "2026_07" / "sentinel2_2026_07_10m_composite.tif",
-        "s2_2026_20m": config.SENTINEL2_DIR / "2026_07" / "sentinel2_2026_07_20m_composite.tif",
-    }
+    sources = {}
+    for year in config.YEARS:
+        composite = config.LANDSAT9_DIR / f"{year}_07" / f"landsat9_{year}_07_composite_30m.tif"
+        if composite.exists():
+            sources[f"l9_{year}_composite"] = composite
+        best = config.LANDSAT9_DIR / f"{year}_07" / f"landsat9_{year}_07_best_scene_30m.tif"
+        if best.exists():
+            sources[f"l9_{year}_best"] = best
+        sources[f"s2_{year}_10m"] = config.SENTINEL2_DIR / f"{year}_07" / f"sentinel2_{year}_07_10m_composite.tif"
+        sources[f"s2_{year}_20m"] = config.SENTINEL2_DIR / f"{year}_07" / f"sentinel2_{year}_07_20m_composite.tif"
 
     results = {}
     for name, path in sources.items():
