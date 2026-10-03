@@ -1,6 +1,6 @@
 # GreenGrid AI — Phase 2 Data Validation Report
 
-Generated: 2026-08-27 11:14:58
+Generated: 2026-10-02 18:13:58
 
 ## Summary
 
@@ -16,7 +16,7 @@ Generated: 2026-08-27 11:14:58
 
 | Category | Check | Status | Message |
 |----------|-------|--------|---------|
-| Study Area | File exists | PASS | 76,990 bytes |
+| Study Area | File exists | PASS | 80,488 bytes |
 | Study Area | Valid JSON | PASS | File parses as valid JSON |
 | Study Area | GeoJSON type | PASS | FeatureCollection |
 | Study Area | Feature count | PASS | 1 features |
@@ -24,23 +24,23 @@ Generated: 2026-08-27 11:14:58
 | Study Area | CRS | PASS | EPSG:4326 (WGS84) |
 | Study Area | Geometry validity | PASS | All geometries are valid |
 | Study Area | Spatial extent | PASS | (76.8388, 28.4046) → (77.3453, 28.8834) |
-| Districts | File exists | PASS | 764,034 bytes |
+| Districts | File exists | PASS | 817,067 bytes |
 | Districts | Valid JSON | PASS | File parses as valid JSON |
 | Districts | GeoJSON type | PASS | Overpass JSON format (7,415 elements) |
 | Districts | Element count | PASS | 7,415 OSM elements |
-| Roads | File exists | PASS | 3,608,363 bytes |
+| Roads | File exists | PASS | 3,842,546 bytes |
 | Roads | Valid JSON | PASS | File parses as valid JSON |
 | Roads | GeoJSON type | PASS | Overpass JSON format (28,225 elements) |
 | Roads | Element count | PASS | 28,225 OSM elements |
-| Land Use | File exists | PASS | 5,515,020 bytes |
+| Land Use | File exists | PASS | 5,900,132 bytes |
 | Land Use | Valid JSON | PASS | File parses as valid JSON |
 | Land Use | GeoJSON type | PASS | Overpass JSON format (49,999 elements) |
 | Land Use | Element count | PASS | 49,999 OSM elements |
-| Vegetation | File exists | PASS | 6,224,854 bytes |
+| Vegetation | File exists | PASS | 6,667,234 bytes |
 | Vegetation | Valid JSON | PASS | File parses as valid JSON |
 | Vegetation | GeoJSON type | PASS | Overpass JSON format (59,857 elements) |
 | Vegetation | Element count | PASS | 59,857 OSM elements |
-| Buildings | File exists | PASS | 11,153,262 bytes |
+| Buildings | File exists | PASS | 11,962,432 bytes |
 | Buildings | Valid JSON | PASS | File parses as valid JSON |
 | Buildings | GeoJSON type | PASS | Overpass JSON format (107,645 elements) |
 | Buildings | Element count | PASS | 107,645 OSM elements |
@@ -108,7 +108,7 @@ Generated: 2026-08-27 11:14:58
 | Sentinel2/S2 2026 20m | Extent | PASS | (76.8329, 28.4083) → (77.3378, 28.8846) |
 | Sentinel2/S2 2026 20m | NoData value | WARN | Not set (may be OK for raw data) |
 | Sentinel2/S2 2026 20m | Resolution | PASS | 0.000180 × 0.000180 degrees (~20m at equator) |
-| Metadata | File exists | PASS | 7,031 bytes |
+| Metadata | File exists | PASS | 6,910 bytes |
 | Metadata | CSV readable | PASS | 14 rows |
 
 ## Overall Status

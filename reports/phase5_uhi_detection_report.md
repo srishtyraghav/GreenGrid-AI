@@ -732,6 +732,77 @@ experiments, in priority order:
 6. **Ensemble methods:** combine RF and XGBoost probabilities; their errors
    differ and both are seed-stable.
 
+> *Superseded 2026-10-03:* the priorities above were executed as a gated
+> experiment campaign after the Phase 3–5 re-run on the 5-year dataset
+> (July 2022–2026). All results, including which experiments failed their
+> gates, are summarized in §25; the resulting production model is frozen in
+> `data/processed/phase5_production_3class/` (handoff:
+> `phase5_production_model.md`). In particular, item 4 (adopt RF-C) is
+> superseded — the production model is XGBoost.
+
+## 25. Post-Report Experiment Campaign (2026-09 → 2026-10): How the Current Accuracy Was Achieved
+
+This section records the complete experiment chain that turned the
+generalization bottleneck identified in §20–24 into the current production
+model. Every step used the same frozen protocol: 5-year dataset (749,998
+sampled pixels, 150k/year), adjacent-block 5-fold CV, LOBO, and the
+deterministic locked Delhi holdout (blocks [2, 9, 15, 23], rule
+`occupied[2::6]`), with all class thresholds computed from training rows
+only. No experiment tuned against the locked holdout.
+
+### 25.1 Step 0 — 5-year dataset and honest starting point
+
+Re-running Phases 3–5 on five July snapshots (2022–2026, same sensors and
+processing as the original 2022/2026 pair) with Tier-2 unpaired per-year
+sampling (the 2024/2025 monsoon holes no longer delete other years' pixels)
+gave the honest geographic-generalization starting point:
+
+| Generation | Task | Locked acc. | Locked macro-F1 |
+|---|---|---|---|
+| 5-yr baseline (Tier-1 indices only) | 4-class | 35.15% | — |
+| + Tier-2 spatial means | 4-class | 49.59% | — |
+| + LULC (8-class + fractions) | 4-class | **50.02%** | 0.4769 |
+
+The 4-class XGBoost + LULC model was frozen as the baseline for all
+comparisons that follow.
+
+### 25.2 Experiment chain (gated, one at a time)
+
+| # | Experiment | Result (locked) | Decision |
+|---|---|---|---|
+| 1 | Ordinal 4-class formulation | 49.63% / F1 0.486 (below 50.02% gate) | **Rejected** — chain stopped per protocol |
+| 2 | + 6 met covariates (ERA5 via Open-Meteo: air temp, RH, wind, precip, solar radiation, soil moisture; July 1–30, 04:00–06:00 UTC acquisition window; alignment audit PASS first) | 4-class: **51.40%** / F1 0.5068 (+1.38 pp, high+severe recall +6.1 pp) | **Adopted** |
+| 3 | 3-class target (per-year LST tertiles, train-only thresholds) | **62.99%** / F1 0.6186 | **Adopted as new task** — *different, easier target (chance 33% vs 25%); not comparable to the 4-class numbers above* |
+| 4 | Continuous LST regression → tertile classes | 60.45% / F1 0.5966 (MAE 2.52 °C, R² 0.487) | **Rejected** — regression path loses −2.5 pp to direct classification on the identical target |
+| 5 | + 33 spatial-context features (nan-safe 3×3/5×5/11×11 std for ndvi/ndbi/ndre/ndmi/mndwi/bsi/vegetation_cover, mndwi/ndre means, ndvi/ndbi ranges; **no LST-derived features** — standing leakage rule) | **63.97%** / F1 0.6315 (+0.97 pp; Moderate recall 48.4%→51.9%) | **Adopted → production** |
+
+Key negative results are kept deliberately: the ordinal formulation failed
+its gate, and the regression→threshold path underperformed direct
+classification (High recall collapsed 62.7%→52.2% because regressors shrink
+toward the mean). Both are documented in `experiments/`.
+
+### 25.3 Verification and freeze
+
+Refitting the winning configuration initially scored 64.22% instead of
+63.97% — diagnosed as XGBoost multi-thread run-to-run jitter, not a
+configuration difference. Single-threaded (`n_jobs=1`) fits are fully
+deterministic and reproduce the experiment record **exactly**
+(accuracy 0.6396665687, macro-F1 0.6314607179, identical predictions). The
+production model was therefore frozen with that execution policy and its
+locked metrics verified to 1e-9 before acceptance
+(`scripts/freeze_phase5_production.py`).
+
+### 25.4 Current production model (Phase 6+ input)
+
+- **XGBoost + LULC + 6 met covariates + 33 spatial-context features, 178 encoded features**
+- Target: Low/Moderate/High per-year LST tertiles (train-only thresholds)
+- **Locked: 63.97% accuracy / 0.6315 macro-F1** (CV5 65.79%, LOBO 67.93%)
+- Per-class locked F1: Low 0.721, Moderate 0.515, High 0.658
+- Artifacts: `data/processed/phase5_production_3class/`; all prior models
+  (4-class 50.02%, tier12, RF-C lineage) preserved as historical baselines
+- Honest framing carried forward: 63.97% is geographic holdout on an ordered
+  3-class task; per-class diagnostics, not the headline, drive Phase 6+ use
+
 ---
 
-*GreenGrid AI — Phase 5 UHI Detection Report | Generated 2026-09-02*
+*GreenGrid AI — Phase 5 UHI Detection Report | Generated 2026-09-02 | §25 added 2026-10-03*

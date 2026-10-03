@@ -184,6 +184,16 @@ PYTHONPATH=src python3 -m features.pipeline --skip-maps
 
 ## Phase 5 — AI-Based UHI Detection & Classification
 
+> **⚑ PRIMARY PRODUCTION MODEL (2026-10-03):** the official Phase 5 production
+> model is the **178-feature 3-class XGBoost** configuration frozen in
+> `data/processed/phase5_production_3class/` — target Low/Moderate/High from
+> per-year LST tertiles, XGBoost + LULC + 6 met covariates + 33 spatial-context
+> features, **locked geographic holdout 63.97% accuracy / 0.6315 macro-F1**
+> (verified reproduced exactly). See `reports/phase5_production_model.md`.
+> It supersedes the earlier 4-class / RF-C production lineage (preserved as
+> historical baselines); **Phase 6+ downstream outputs must be re-run against
+> this model** — outputs produced before 2026-10-03 used the superseded model.
+
 ### Objective
 
 Implement the project’s first machine-learning component: classify 30 m pixels into relative LST heat-severity categories (Low, Moderate, High, Severe) using Phase 4 environmental features.
