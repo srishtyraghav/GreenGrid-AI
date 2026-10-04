@@ -1,0 +1,179 @@
+feature,source_group
+ndvi,base predictor (PREDICTOR_VARS)
+ndbi,base predictor (PREDICTOR_VARS)
+vegetation_cover,base predictor (PREDICTOR_VARS)
+ndmi,base predictor (PREDICTOR_VARS)
+mndwi,base predictor (PREDICTOR_VARS)
+bsi,base predictor (PREDICTOR_VARS)
+ndre,base predictor (PREDICTOR_VARS)
+landuse_class_0.0,base predictor (PREDICTOR_VARS)
+landuse_class_2.0,base predictor (PREDICTOR_VARS)
+landuse_class_4.0,base predictor (PREDICTOR_VARS)
+landuse_class_5.0,base predictor (PREDICTOR_VARS)
+landuse_class_6.0,base predictor (PREDICTOR_VARS)
+landuse_class_7.0,base predictor (PREDICTOR_VARS)
+landuse_class_8.0,base predictor (PREDICTOR_VARS)
+lulc_class_0,base predictor (PREDICTOR_VARS)
+lulc_class_1,base predictor (PREDICTOR_VARS)
+lulc_class_2,base predictor (PREDICTOR_VARS)
+lulc_class_3,base predictor (PREDICTOR_VARS)
+lulc_class_4,base predictor (PREDICTOR_VARS)
+lulc_class_5,base predictor (PREDICTOR_VARS)
+lulc_class_6,base predictor (PREDICTOR_VARS)
+lulc_class_7,base predictor (PREDICTOR_VARS)
+lulc_class_8,base predictor (PREDICTOR_VARS)
+dist_road_m,base predictor (PREDICTOR_VARS)
+dist_vegetation_m,base predictor (PREDICTOR_VARS)
+dist_building_m,base predictor (PREDICTOR_VARS)
+year,base predictor (PREDICTOR_VARS)
+ndvi_mean3,spatial cache 3/5/11 means (Tier 2)
+ndvi_mean5,spatial cache 3/5/11 means (Tier 2)
+ndvi_mean11,spatial cache 3/5/11 means (Tier 2)
+ndbi_mean3,spatial cache 3/5/11 means (Tier 2)
+ndbi_mean5,spatial cache 3/5/11 means (Tier 2)
+ndbi_mean11,spatial cache 3/5/11 means (Tier 2)
+vegetation_cover_mean3,spatial cache 3/5/11 means (Tier 2)
+vegetation_cover_mean5,spatial cache 3/5/11 means (Tier 2)
+vegetation_cover_mean11,spatial cache 3/5/11 means (Tier 2)
+ndmi_mean3,spatial cache 3/5/11 means (Tier 2)
+ndmi_mean5,spatial cache 3/5/11 means (Tier 2)
+ndmi_mean11,spatial cache 3/5/11 means (Tier 2)
+bsi_mean3,spatial cache 3/5/11 means (Tier 2)
+bsi_mean5,spatial cache 3/5/11 means (Tier 2)
+bsi_mean11,spatial cache 3/5/11 means (Tier 2)
+dist_road_m_mean3,spatial cache 3/5/11 means (Tier 2)
+dist_road_m_mean5,spatial cache 3/5/11 means (Tier 2)
+dist_road_m_mean11,spatial cache 3/5/11 means (Tier 2)
+dist_vegetation_m_mean3,spatial cache 3/5/11 means (Tier 2)
+dist_vegetation_m_mean5,spatial cache 3/5/11 means (Tier 2)
+dist_vegetation_m_mean11,spatial cache 3/5/11 means (Tier 2)
+dist_building_m_mean3,spatial cache 3/5/11 means (Tier 2)
+dist_building_m_mean5,spatial cache 3/5/11 means (Tier 2)
+dist_building_m_mean11,spatial cache 3/5/11 means (Tier 2)
+building_pixel_fraction_50m,morphology cache (50-500m)
+road_pixel_fraction_50m,morphology cache (50-500m)
+vegetation_pixel_fraction_50m,morphology cache (50-500m)
+vegetation_cover_mean_50m,spatial cache 3/5/11 means (Tier 2)
+landuse_frac_1_50m,morphology cache (50-500m)
+landuse_frac_2_50m,morphology cache (50-500m)
+landuse_frac_3_50m,morphology cache (50-500m)
+landuse_frac_4_50m,morphology cache (50-500m)
+landuse_frac_5_50m,morphology cache (50-500m)
+landuse_frac_6_50m,morphology cache (50-500m)
+landuse_frac_7_50m,morphology cache (50-500m)
+landuse_frac_8_50m,morphology cache (50-500m)
+landuse_dominant_50m_0,base predictor (PREDICTOR_VARS)
+landuse_dominant_50m_2,base predictor (PREDICTOR_VARS)
+landuse_dominant_50m_4,base predictor (PREDICTOR_VARS)
+landuse_dominant_50m_5,base predictor (PREDICTOR_VARS)
+landuse_dominant_50m_6,base predictor (PREDICTOR_VARS)
+landuse_dominant_50m_7,base predictor (PREDICTOR_VARS)
+landuse_dominant_50m_8,base predictor (PREDICTOR_VARS)
+landuse_entropy_50m,base predictor (PREDICTOR_VARS)
+ndvi_contrast_50m,morphology cache (50-500m)
+ndbi_contrast_50m,morphology cache (50-500m)
+building_pixel_fraction_100m,morphology cache (50-500m)
+road_pixel_fraction_100m,morphology cache (50-500m)
+vegetation_pixel_fraction_100m,morphology cache (50-500m)
+vegetation_cover_mean_100m,spatial cache 3/5/11 means (Tier 2)
+landuse_frac_1_100m,morphology cache (50-500m)
+landuse_frac_2_100m,morphology cache (50-500m)
+landuse_frac_3_100m,morphology cache (50-500m)
+landuse_frac_4_100m,morphology cache (50-500m)
+landuse_frac_5_100m,morphology cache (50-500m)
+landuse_frac_6_100m,morphology cache (50-500m)
+landuse_frac_7_100m,morphology cache (50-500m)
+landuse_frac_8_100m,morphology cache (50-500m)
+landuse_dominant_100m_0,base predictor (PREDICTOR_VARS)
+landuse_dominant_100m_2,base predictor (PREDICTOR_VARS)
+landuse_dominant_100m_4,base predictor (PREDICTOR_VARS)
+landuse_dominant_100m_5,base predictor (PREDICTOR_VARS)
+landuse_dominant_100m_6,base predictor (PREDICTOR_VARS)
+landuse_dominant_100m_7,base predictor (PREDICTOR_VARS)
+landuse_dominant_100m_8,base predictor (PREDICTOR_VARS)
+landuse_entropy_100m,base predictor (PREDICTOR_VARS)
+ndvi_contrast_100m,morphology cache (50-500m)
+ndbi_contrast_100m,morphology cache (50-500m)
+building_pixel_fraction_250m,morphology cache (50-500m)
+road_pixel_fraction_250m,morphology cache (50-500m)
+vegetation_pixel_fraction_250m,morphology cache (50-500m)
+vegetation_cover_mean_250m,spatial cache 3/5/11 means (Tier 2)
+landuse_frac_1_250m,morphology cache (50-500m)
+landuse_frac_2_250m,morphology cache (50-500m)
+landuse_frac_3_250m,morphology cache (50-500m)
+landuse_frac_4_250m,morphology cache (50-500m)
+landuse_frac_5_250m,morphology cache (50-500m)
+landuse_frac_6_250m,morphology cache (50-500m)
+landuse_frac_7_250m,morphology cache (50-500m)
+landuse_frac_8_250m,morphology cache (50-500m)
+landuse_dominant_250m_0,base predictor (PREDICTOR_VARS)
+landuse_dominant_250m_2,base predictor (PREDICTOR_VARS)
+landuse_dominant_250m_4,base predictor (PREDICTOR_VARS)
+landuse_dominant_250m_5,base predictor (PREDICTOR_VARS)
+landuse_dominant_250m_6,base predictor (PREDICTOR_VARS)
+landuse_dominant_250m_7,base predictor (PREDICTOR_VARS)
+landuse_dominant_250m_8,base predictor (PREDICTOR_VARS)
+landuse_entropy_250m,base predictor (PREDICTOR_VARS)
+ndvi_contrast_250m,morphology cache (50-500m)
+ndbi_contrast_250m,morphology cache (50-500m)
+building_pixel_fraction_500m,morphology cache (50-500m)
+road_pixel_fraction_500m,morphology cache (50-500m)
+vegetation_pixel_fraction_500m,morphology cache (50-500m)
+vegetation_cover_mean_500m,spatial cache 3/5/11 means (Tier 2)
+landuse_frac_1_500m,morphology cache (50-500m)
+landuse_frac_2_500m,morphology cache (50-500m)
+landuse_frac_3_500m,morphology cache (50-500m)
+landuse_frac_4_500m,morphology cache (50-500m)
+landuse_frac_5_500m,morphology cache (50-500m)
+landuse_frac_6_500m,morphology cache (50-500m)
+landuse_frac_7_500m,morphology cache (50-500m)
+landuse_frac_8_500m,morphology cache (50-500m)
+landuse_dominant_500m_0,base predictor (PREDICTOR_VARS)
+landuse_dominant_500m_2,base predictor (PREDICTOR_VARS)
+landuse_dominant_500m_4,base predictor (PREDICTOR_VARS)
+landuse_dominant_500m_5,base predictor (PREDICTOR_VARS)
+landuse_dominant_500m_6,base predictor (PREDICTOR_VARS)
+landuse_dominant_500m_7,base predictor (PREDICTOR_VARS)
+landuse_dominant_500m_8,base predictor (PREDICTOR_VARS)
+landuse_entropy_500m,base predictor (PREDICTOR_VARS)
+ndvi_contrast_500m,morphology cache (50-500m)
+ndbi_contrast_500m,morphology cache (50-500m)
+met_t2m_c,"meteorological (Open-Meteo/ERA5, exp_met)"
+met_rh_pct,"meteorological (Open-Meteo/ERA5, exp_met)"
+met_wind_kmh,"meteorological (Open-Meteo/ERA5, exp_met)"
+met_precip_mm,"meteorological (Open-Meteo/ERA5, exp_met)"
+met_ssr_wm2,"meteorological (Open-Meteo/ERA5, exp_met)"
+met_swc_m3m3,"meteorological (Open-Meteo/ERA5, exp_met)"
+ndvi_std3,"spatial-context new (33, build_spatial_context_features.py)"
+ndvi_std5,"spatial-context new (33, build_spatial_context_features.py)"
+ndvi_std11,"spatial-context new (33, build_spatial_context_features.py)"
+ndbi_std3,"spatial-context new (33, build_spatial_context_features.py)"
+ndbi_std5,"spatial-context new (33, build_spatial_context_features.py)"
+ndbi_std11,"spatial-context new (33, build_spatial_context_features.py)"
+ndre_std3,"spatial-context new (33, build_spatial_context_features.py)"
+ndre_std5,"spatial-context new (33, build_spatial_context_features.py)"
+ndre_std11,"spatial-context new (33, build_spatial_context_features.py)"
+ndmi_std3,"spatial-context new (33, build_spatial_context_features.py)"
+ndmi_std5,"spatial-context new (33, build_spatial_context_features.py)"
+ndmi_std11,"spatial-context new (33, build_spatial_context_features.py)"
+mndwi_std3,"spatial-context new (33, build_spatial_context_features.py)"
+mndwi_std5,"spatial-context new (33, build_spatial_context_features.py)"
+mndwi_std11,"spatial-context new (33, build_spatial_context_features.py)"
+bsi_std3,"spatial-context new (33, build_spatial_context_features.py)"
+bsi_std5,"spatial-context new (33, build_spatial_context_features.py)"
+bsi_std11,"spatial-context new (33, build_spatial_context_features.py)"
+vegetation_cover_std3,"spatial-context new (33, build_spatial_context_features.py)"
+vegetation_cover_std5,"spatial-context new (33, build_spatial_context_features.py)"
+vegetation_cover_std11,"spatial-context new (33, build_spatial_context_features.py)"
+mndwi_mean3,"spatial-context new (33, build_spatial_context_features.py)"
+mndwi_mean5,"spatial-context new (33, build_spatial_context_features.py)"
+mndwi_mean11,"spatial-context new (33, build_spatial_context_features.py)"
+ndre_mean3,"spatial-context new (33, build_spatial_context_features.py)"
+ndre_mean5,"spatial-context new (33, build_spatial_context_features.py)"
+ndre_mean11,"spatial-context new (33, build_spatial_context_features.py)"
+ndvi_range3,"spatial-context new (33, build_spatial_context_features.py)"
+ndvi_range5,"spatial-context new (33, build_spatial_context_features.py)"
+ndvi_range11,"spatial-context new (33, build_spatial_context_features.py)"
+ndbi_range3,"spatial-context new (33, build_spatial_context_features.py)"
+ndbi_range5,"spatial-context new (33, build_spatial_context_features.py)"
+ndbi_range11,"spatial-context new (33, build_spatial_context_features.py)"

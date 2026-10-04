@@ -1,0 +1,494 @@
+{
+  "data_root": "v2\\data\\raw",
+  "grid_file": "C:\\GreenGrid-AI\\v2\\data\\raw\\landsat9\\2026_05_06\\landsat9_2026_05_06_composite_30m.tif",
+  "years": [
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
+  "window": "W4 May 1 - Jun 30 (tag 05_06); met hours UTC (4, 5, 6)",
+  "gates": {
+    "l9_st": 0.9,
+    "s2_10m": 0.85,
+    "lulc": 0.8
+  },
+  "checks": [
+    {
+      "year": 2022,
+      "products": {
+        "landsat9": {
+          "path": "v2\\data\\raw\\landsat9\\2022_05_06\\landsat9_2022_05_06_composite_30m.tif",
+          "sha256": "8c66c7413a771133f3411e8bd82435ed56a8951ae2e2b7c2eb705e56f606d773",
+          "transform_exact_match": true,
+          "coverage_st": 0.969943,
+          "gate": 0.9,
+          "nan_inf": {
+            "SR_B2": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B3": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B4": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B5": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B6": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B7": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "ST_B10": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_PIXEL": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_CLEAR_COUNT": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            }
+          }
+        },
+        "sentinel2_10m": {
+          "path": "v2\\data\\raw\\sentinel2\\2022_05_06\\sentinel2_2022_05_06_10m_composite.tif",
+          "sha256": "14fbb8d9f6a5b864b3f574d4bf7a788ca5b1a642ec91f84a713714ad7dbc529e",
+          "coverage": 0.964364,
+          "gate": 0.85,
+          "b2_zero_guard": {
+            "finite_px": 17193173,
+            "b2_zero_px": 84909,
+            "valid_excluding_b2_zero": 17108264,
+            "identity_holds": true
+          }
+        },
+        "sentinel2_20m": {
+          "path": "v2\\data\\raw\\sentinel2\\2022_05_06\\sentinel2_2022_05_06_20m_composite.tif",
+          "sha256": "7032406718b2a1ee910d2dea883f698205646a72496bc9ddf058fa743b8714f6",
+          "coverage_finite_b5_b12": 0.969631
+        },
+        "lulc": {
+          "path": "v2\\data\\raw\\lulc\\2022_05_06\\lulc_2022_05_06_10m.tif",
+          "sha256": "b377e61830a1d36195e880c2f2e587e47882e2c84d4f1a6063c8a264c1ac2e18",
+          "coverage": 0.96928,
+          "gate": 0.8
+        }
+      }
+    },
+    {
+      "year": 2023,
+      "products": {
+        "landsat9": {
+          "path": "v2\\data\\raw\\landsat9\\2023_05_06\\landsat9_2023_05_06_composite_30m.tif",
+          "sha256": "03dc3563233eb90fe8afc1e21409fd9889480096e8bbd91cd29a463aa5318791",
+          "transform_exact_match": true,
+          "coverage_st": 0.96981,
+          "gate": 0.9,
+          "nan_inf": {
+            "SR_B2": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "SR_B3": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "SR_B4": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "SR_B5": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "SR_B6": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "SR_B7": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "ST_B10": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "QA_PIXEL": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            },
+            "QA_CLEAR_COUNT": {
+              "finite_fraction": 0.577401,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422599
+            }
+          }
+        },
+        "sentinel2_10m": {
+          "path": "v2\\data\\raw\\sentinel2\\2023_05_06\\sentinel2_2023_05_06_10m_composite.tif",
+          "sha256": "ec09efbc5d200d02197ef55606d1c8fa3bf06f4c7269cfccb88078528df91f9c",
+          "coverage": 0.96928,
+          "gate": 0.85,
+          "b2_zero_guard": {
+            "finite_px": 17193173,
+            "b2_zero_px": 0,
+            "valid_excluding_b2_zero": 17193173,
+            "identity_holds": true
+          }
+        },
+        "sentinel2_20m": {
+          "path": "v2\\data\\raw\\sentinel2\\2023_05_06\\sentinel2_2023_05_06_20m_composite.tif",
+          "sha256": "26c227ec26a359b7d3e2ec653e641756a8039d23befd433f8b5546fd3a0e2c26",
+          "coverage_finite_b5_b12": 0.969631
+        },
+        "lulc": {
+          "path": "v2\\data\\raw\\lulc\\2023_05_06\\lulc_2023_05_06_10m.tif",
+          "sha256": "1064e9ffbde38d6c63fba0a4a13c63c37fc7f62e35951bb6d711373d0c90eced",
+          "coverage": 0.96928,
+          "gate": 0.8
+        }
+      }
+    },
+    {
+      "year": 2024,
+      "products": {
+        "landsat9": {
+          "path": "v2\\data\\raw\\landsat9\\2024_05_06\\landsat9_2024_05_06_composite_30m.tif",
+          "sha256": "d2db28d3c839f6b613228de9cbe59467569088a559d997c0996dc7b505097bcc",
+          "transform_exact_match": true,
+          "coverage_st": 0.969943,
+          "gate": 0.9,
+          "nan_inf": {
+            "SR_B2": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B3": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B4": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B5": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B6": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B7": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "ST_B10": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_PIXEL": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_CLEAR_COUNT": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            }
+          }
+        },
+        "sentinel2_10m": {
+          "path": "v2\\data\\raw\\sentinel2\\2024_05_06\\sentinel2_2024_05_06_10m_composite.tif",
+          "sha256": "30963a99ed3d27077006f981af68a3e10ba605c5d87d014ce6acb4d032cdf8c0",
+          "coverage": 0.96928,
+          "gate": 0.85,
+          "b2_zero_guard": {
+            "finite_px": 17193173,
+            "b2_zero_px": 0,
+            "valid_excluding_b2_zero": 17193173,
+            "identity_holds": true
+          }
+        },
+        "sentinel2_20m": {
+          "path": "v2\\data\\raw\\sentinel2\\2024_05_06\\sentinel2_2024_05_06_20m_composite.tif",
+          "sha256": "942a3ad31d0fb68be2c674a0e8873238a34a30d491ce77e5a02e52dc0a1ed342",
+          "coverage_finite_b5_b12": 0.969631
+        },
+        "lulc": {
+          "path": "v2\\data\\raw\\lulc\\2024_05_06\\lulc_2024_05_06_10m.tif",
+          "sha256": "3a99cf0122654f3e868539994aec366ee12f3d4324c21e11b541a0206e065c2f",
+          "coverage": 0.96928,
+          "gate": 0.8
+        }
+      }
+    },
+    {
+      "year": 2025,
+      "products": {
+        "landsat9": {
+          "path": "v2\\data\\raw\\landsat9\\2025_05_06\\landsat9_2025_05_06_composite_30m.tif",
+          "sha256": "901b33bcebec7955af5aaa0cd5eb21f6956e58cbdbce7b60f48367d07af45eae",
+          "transform_exact_match": true,
+          "coverage_st": 0.969943,
+          "gate": 0.9,
+          "nan_inf": {
+            "SR_B2": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B3": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B4": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B5": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B6": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B7": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "ST_B10": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_PIXEL": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_CLEAR_COUNT": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            }
+          }
+        },
+        "sentinel2_10m": {
+          "path": "v2\\data\\raw\\sentinel2\\2025_05_06\\sentinel2_2025_05_06_10m_composite.tif",
+          "sha256": "5240e3af6b730b0d76a1ec62cbdab64b4df614614150e932ef9954a1fbb54524",
+          "coverage": 0.96928,
+          "gate": 0.85,
+          "b2_zero_guard": {
+            "finite_px": 17193173,
+            "b2_zero_px": 0,
+            "valid_excluding_b2_zero": 17193173,
+            "identity_holds": true
+          }
+        },
+        "sentinel2_20m": {
+          "path": "v2\\data\\raw\\sentinel2\\2025_05_06\\sentinel2_2025_05_06_20m_composite.tif",
+          "sha256": "509b9e6ce3ac61c5e9be041a833bff9e08c7662b928530be253aedc560676aa4",
+          "coverage_finite_b5_b12": 0.969631
+        },
+        "lulc": {
+          "path": "v2\\data\\raw\\lulc\\2025_05_06\\lulc_2025_05_06_10m.tif",
+          "sha256": "a51a6048d6b3430747d4f7ed73fcd09f357d4a0fa2e531cc6ab0b3d7b831c504",
+          "coverage": 0.96928,
+          "gate": 0.8
+        }
+      }
+    },
+    {
+      "year": 2026,
+      "products": {
+        "landsat9": {
+          "path": "v2\\data\\raw\\landsat9\\2026_05_06\\landsat9_2026_05_06_composite_30m.tif",
+          "sha256": "a02ca3f375773c7427ed8908024c2c20420d6b60e272536758637534a978112a",
+          "transform_exact_match": true,
+          "coverage_st": 0.969943,
+          "gate": 0.9,
+          "nan_inf": {
+            "SR_B2": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B3": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B4": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B5": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B6": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "SR_B7": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "ST_B10": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_PIXEL": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            },
+            "QA_CLEAR_COUNT": {
+              "finite_fraction": 0.577477,
+              "n_inf": 0,
+              "nan_or_masked_fraction": 0.422523
+            }
+          }
+        },
+        "sentinel2_10m": {
+          "path": "v2\\data\\raw\\sentinel2\\2026_05_06\\sentinel2_2026_05_06_10m_composite.tif",
+          "sha256": "d84b44f100835791a3ecd92b30f2bed5182a6b59d1b09430c3e7e83bf9639d9d",
+          "coverage": 0.968897,
+          "gate": 0.85,
+          "b2_zero_guard": {
+            "finite_px": 17193173,
+            "b2_zero_px": 7867,
+            "valid_excluding_b2_zero": 17185306,
+            "identity_holds": true
+          }
+        },
+        "sentinel2_20m": {
+          "path": "v2\\data\\raw\\sentinel2\\2026_05_06\\sentinel2_2026_05_06_20m_composite.tif",
+          "sha256": "a2702f6e708c24aa5dd6df34e6e064a78bc1007a9c6f7ae9b784514e31b22e25",
+          "coverage_finite_b5_b12": 0.969631
+        },
+        "lulc": {
+          "path": "v2\\data\\raw\\lulc\\2026_05_06\\lulc_2026_05_06_10m.tif",
+          "sha256": "601468610925d21d64e6dc1832b351afcf3ed9d2bce6dc604a08ae16a097e755",
+          "coverage": 0.96928,
+          "gate": 0.8
+        }
+      }
+    }
+  ],
+  "study_area": {
+    "path": "C:\\GreenGrid-AI\\v2\\data\\gis\\study_area\\study_area.geojson",
+    "n_features": 1
+  },
+  "grid": {
+    "height": 1768,
+    "width": 1874,
+    "transform": [
+      0.00026949458523585647,
+      0.0,
+      76.83290625074268,
+      0.0,
+      -0.00026949458523585647,
+      28.884699140164333
+    ],
+    "crs": "EPSG:4326"
+  },
+  "crosschecks": [
+    {
+      "year": 2022,
+      "kind": "b2_zero_px",
+      "recomputed": 84909,
+      "prior": 84909,
+      "prior_path": "v2\\data\\phase2\\w4_input_audit.json",
+      "match": true
+    },
+    {
+      "year": 2023,
+      "kind": "b2_zero_px",
+      "recomputed": 0,
+      "prior": 0,
+      "prior_path": "v2\\data\\phase2\\w4_input_audit.json",
+      "match": true
+    },
+    {
+      "year": 2024,
+      "kind": "b2_zero_px",
+      "recomputed": 0,
+      "prior": 0,
+      "prior_path": "v2\\data\\phase2\\w4_input_audit.json",
+      "match": true
+    },
+    {
+      "year": 2025,
+      "kind": "b2_zero_px",
+      "recomputed": 0,
+      "prior": 0,
+      "prior_path": "v2\\data\\phase2\\w4_input_audit.json",
+      "match": true
+    },
+    {
+      "year": 2026,
+      "kind": "b2_zero_px",
+      "recomputed": 7867,
+      "prior": 7867,
+      "prior_path": "v2\\data\\phase2\\w4_input_audit.json",
+      "match": true
+    }
+  ],
+  "warnings": [
+    "[2022] S2-10m: B2==0 zero-fill pattern present (84909 px excluded from the value stack)",
+    "[2026] S2-10m: B2==0 zero-fill pattern present (7867 px excluded from the value stack)"
+  ],
+  "failures": [],
+  "status": "PASS"
+}

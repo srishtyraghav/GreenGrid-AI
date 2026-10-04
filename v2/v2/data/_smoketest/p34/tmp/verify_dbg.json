@@ -1,0 +1,10 @@
+{
+  "parquets": [],
+  "frozen_schema_sha256": "ddd43d0468dcab8df1c173a2adf57c8e3aec9f386851f7031b77cb3f8dc2c211",
+  "block_geometry": "pinned V1 bins (HOLDOUT_BLOCKS=[2,9,15,23])",
+  "warnings": [],
+  "failures": [
+    "no features_*.parquet under v2\\data\\_smoketest\\p34\\tmp\\phase4_out"
+  ],
+  "status": "FAIL"
+}

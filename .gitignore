@@ -70,3 +70,20 @@ models/*.pth
 .idea/
 
 data/raw/gis/study_area/study_area_raw.geojson
+
+# ============================================
+# v1 / v2 split (2026-10-04)
+# ============================================
+v1/data/raw/landsat9/**/*.tif
+v1/data/raw/sentinel2/**/*.tif
+v1/data/processed/
+v1/data/final/
+v1/models/*.joblib
+v2/data/raw/**/*.tif
+v2/data/phase3/
+v2/data/phase4/
+v2/data/phase5/
+v2/data/phase6*/
+v2/data/phase7*/
+v2/data/phase8*/
+v2/data/_smoketest/
