@@ -43,9 +43,9 @@ Phase 2  → Dataset Collection                   ✅ Complete
 Phase 3  → Data Preprocessing                   ✅ Complete
 Phase 4  → Feature Extraction                   ✅ Complete
 Phase 5  → AI-Based UHI Detection               ✅ Complete
-Phase 6  → UHI Severity Mapping — full-grid ML heat-severity maps, hotspot delineation, area-wise heat statistics, green vs built-up analytics (relative heat-severity proxy) ✅ Complete
-Phase 7  → Tree Plantation Suitability — GIS multi-criteria suitability & priority zones on Phase 6 heat severity (potential suitability, not land availability) ✅ Complete
-Phase 8  → Tree Requirement Estimation          ⬜ Pending Phase 7
+Phase 6  → UHI Severity Mapping — full-grid ML heat-severity maps, hotspot delineation, area-wise heat statistics, green vs built-up analytics (relative heat-severity proxy) ✅ Complete (production re-run 2026-10-03, 5-year 3-class model)
+Phase 7  → Tree Plantation Suitability — GIS multi-criteria suitability & priority zones on Phase 6 heat severity (potential suitability, not land availability) ✅ Complete (production re-run 2026-10-03, 5-year 3-class model)
+Phase 8  → Tree Requirement Estimation ✅ Complete (production run 2026-10-03)
 Phase 9  → Temperature Reduction Prediction     ⬜ Pending Phase 8
 Phase 10 → Visualization & Integration          ⬜ Pending Phase 9
 Phase 11 → Testing & Validation                 ⬜ Pending Phase 10
