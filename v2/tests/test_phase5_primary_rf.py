@@ -34,6 +34,7 @@ EXPECTED_REPORTS = {
     "phase4_feature_extraction_report.md",
     "phase5_production_model.md",
     "phase5_uhi_detection_report.md",
+    "phase6_uhi_severity_mapping_report.md",
 }
 
 
