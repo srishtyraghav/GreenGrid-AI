@@ -36,6 +36,7 @@ EXPECTED_REPORTS = {
     "phase5_uhi_detection_report.md",
     "phase6_uhi_severity_mapping_report.md",
     "phase7_tree_plantation_suitability_report.md",
+    "phase8_tree_requirement_report.md",
 }
 
 
