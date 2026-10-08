@@ -10,12 +10,17 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+const chartOptions = { 
+  cutout: '70%', 
+  plugins: { legend: { display: false }, tooltip: { enabled: false } },
+  animation: { duration: 0 } 
+};
+
 const PlantationSuitability = () => {
   const { year, scenario } = useAppContext();
   const [geoData, setGeoData] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [selectedZone, setSelectedZone] = useState<any>(null);
-  const [hoveredZone, setHoveredZone] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,6 +38,8 @@ const PlantationSuitability = () => {
               feature.properties.rank = zoneStats.rank;
               feature.properties.priority = zoneStats.priority;
               feature.properties.mean_severity_score = zoneStats.mean_severity_score;
+              feature.properties.plantable_ha = zoneStats.plantable_ha;
+              feature.properties.excluded_ha = zoneStats.excluded_ha;
               feature.properties.trees_400 = zoneStats.recommended_trees_400;
               feature.properties.trees_1000 = zoneStats.recommended_trees_1000;
               feature.properties.trees_2500 = zoneStats.recommended_trees_2500;
@@ -41,7 +48,6 @@ const PlantationSuitability = () => {
         }
         setGeoData(geo);
         setSelectedZone(null);
-        setHoveredZone(null);
         const primary = summData.find((row: any) => row.is_primary_density);
         if(primary) setSummary(primary);
       })
@@ -60,65 +66,62 @@ const PlantationSuitability = () => {
     URL.revokeObjectURL(url);
   };
 
+  const getBaseStyle = (feature: any) => {
+    const priority = feature.properties.priority;
+    let color = '#22c55e';
+    if (priority === 'Medium') color = '#eab308';
+    if (priority === 'Low') color = '#ef4444';
+    return { fillColor: color, weight: 1.5, opacity: 0.8, color: 'white', fillOpacity: 0.65 };
+  };
+
+  const getSelectedStyle = () => {
+    return { weight: 4, color: '#2563eb', opacity: 1, fillColor: '#3b82f6', fillOpacity: 0.4 };
+  };
+
   const onEachFeature = (feature: any, layer: any) => {
     layer.on({
-      mouseover: () => setHoveredZone(feature.properties),
-      mouseout: () => setHoveredZone(null),
       click: () => setSelectedZone(feature.properties)
     });
     // Add tooltip that follows mouse
-    layer.bindTooltip(`<strong>Zone ${feature.properties.zone_id}</strong><br/>Priority: ${feature.properties.priority || 'N/A'}<br/>Area: ${feature.properties.area_ha?.toFixed(2)} ha`, {
+    layer.bindTooltip(`<strong>Zone ${feature.properties.zone_id}</strong><br/>Priority: ${feature.properties.priority || 'N/A'}<br/>Plantable Area: ${feature.properties.plantable_ha?.toFixed(2)} ha`, {
       sticky: true,
       className: 'bg-slate-900 text-white border-0 shadow-xl rounded px-3 py-2 text-xs'
     });
   };
 
-  const style = (feature: any) => {
-    const priority = feature.properties.priority;
-    let color = '#22c55e';
-    if (priority === 'Medium') color = '#eab308';
-    if (priority === 'Low') color = '#ef4444';
-    
-    const isSelected = selectedZone && selectedZone.zone_id === feature.properties.zone_id;
-    const isHovered = hoveredZone && hoveredZone.zone_id === feature.properties.zone_id;
-    
-    return {
-      fillColor: color,
-      weight: isSelected ? 4 : (isHovered ? 3 : 2),
-      opacity: 1,
-      color: isSelected ? '#2563eb' : (isHovered ? '#ffffff' : 'white'),
-      fillOpacity: isSelected || isHovered ? 0.9 : 0.75,
-      className: 'transition-all duration-300'
-    };
-  };
-
   const features = geoData?.features || [];
+  const selectedFeature = features.find((f: any) => f.properties.zone_id === selectedZone?.zone_id);
   const sortedFeatures = [...features].sort((a, b) => {
     const aRank = a.properties.rank || a.properties.zone_id;
     const bRank = b.properties.rank || b.properties.zone_id;
     return aRank - bRank;
   });
 
-  // Calculate Chart Data
-  const priorityCounts = { High: 0, Medium: 0, Low: 0 };
-  const priorityArea = { High: 0, Medium: 0, Low: 0 };
-  features.forEach((f: any) => {
-    const p = f.properties.priority;
-    if (p in priorityCounts) {
-      priorityCounts[p as keyof typeof priorityCounts]++;
-      priorityArea[p as keyof typeof priorityArea] += f.properties.area_ha || 0;
-    }
-  });
+  // Calculate Chart Data (Memoized to prevent canvas redraws on hover)
+  const chartData = React.useMemo(() => {
+    const priorityCounts = { High: 0, Medium: 0, Low: 0 };
+    const priorityArea = { High: 0, Medium: 0, Low: 0 };
+    features.forEach((f: any) => {
+      const p = f.properties.priority;
+      if (p in priorityCounts) {
+        priorityCounts[p as keyof typeof priorityCounts]++;
+        priorityArea[p as keyof typeof priorityArea] += f.properties.plantable_ha || 0;
+      }
+    });
 
-  const chartData = {
-    labels: ['High Priority', 'Medium Priority', 'Low Priority'],
-    datasets: [{
-      data: [priorityArea.High, priorityArea.Medium, priorityArea.Low],
-      backgroundColor: ['#22c55e', '#eab308', '#ef4444'],
-      borderWidth: 0,
-      hoverOffset: 4
-    }]
-  };
+    return {
+      counts: priorityCounts,
+      data: {
+        labels: ['High Priority', 'Medium Priority', 'Low Priority'],
+        datasets: [{
+          data: [priorityArea.High, priorityArea.Medium, priorityArea.Low],
+          backgroundColor: ['#22c55e', '#eab308', '#ef4444'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      }
+    };
+  }, [features]);
 
   return (
     <div className="h-full flex flex-col p-8 gap-4 max-w-[1600px] mx-auto">
@@ -143,7 +146,7 @@ const PlantationSuitability = () => {
           </div>
           <div className="bg-white p-4 rounded-xl border border-slate-200/60 shadow-sm flex items-center justify-between">
              <span className="text-xs font-bold text-slate-400 uppercase">High Priority</span>
-             <span className="text-2xl font-bold text-green-600">{priorityCounts.High}</span>
+             <span className="text-2xl font-bold text-green-600">{chartData.counts.High}</span>
           </div>
           <div className="bg-white p-4 rounded-xl border border-slate-200/60 shadow-sm flex items-center justify-between">
              <span className="text-xs font-bold text-slate-400 uppercase">Priority Area</span>
@@ -166,7 +169,26 @@ const PlantationSuitability = () => {
             <Loader text="Loading spatial data..." />
           ) : (
             <MapViewer geoData={geoData}>
-              {geoData && <GeoJSON key={`${year}-${scenario}`} data={geoData} style={style} onEachFeature={onEachFeature} />}
+              {geoData && (
+                <>
+                  {/* Base Layer */}
+                  <GeoJSON 
+                    key={`${year}-${scenario}-base`} 
+                    data={geoData} 
+                    style={getBaseStyle} 
+                    onEachFeature={onEachFeature} 
+                  />
+                  {/* Selected Layer */}
+                  {selectedFeature && (
+                    <GeoJSON 
+                      key={`selected-${selectedFeature.properties.zone_id}`} 
+                      data={selectedFeature} 
+                      style={getSelectedStyle} 
+                      interactive={false} 
+                    />
+                  )}
+                </>
+              )}
             </MapViewer>
           )}
           
@@ -183,12 +205,8 @@ const PlantationSuitability = () => {
              <div className="w-24 h-24 relative">
                 {features.length > 0 && (
                   <Doughnut 
-                    data={chartData} 
-                    options={{ 
-                      cutout: '70%', 
-                      plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                      animation: { duration: 0 } 
-                    }} 
+                    data={chartData.data} 
+                    options={chartOptions} 
                   />
                 )}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -209,8 +227,8 @@ const PlantationSuitability = () => {
           </div>
           
           <div className="flex-1 overflow-auto flex flex-col scroll-smooth">
-            {(selectedZone || hoveredZone) ? (
-              <ZoneDetailCard zone={selectedZone || hoveredZone} isHovered={!selectedZone && !!hoveredZone} onClear={() => setSelectedZone(null)} />
+            {selectedZone ? (
+              <ZoneDetailCard zone={selectedZone} onClear={() => setSelectedZone(null)} />
             ) : (
               <div className="p-8 bg-slate-50/50 border-b border-slate-100 text-sm text-slate-400 text-center flex flex-col items-center justify-center gap-3">
                 <MapPin size={32} className="text-slate-300 opacity-50" />
@@ -233,14 +251,10 @@ const PlantationSuitability = () => {
                     <button
                       key={f.properties.zone_id}
                       onClick={() => setSelectedZone(f.properties)}
-                      onMouseEnter={() => setHoveredZone(f.properties)}
-                      onMouseLeave={() => setHoveredZone(null)}
                       className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all flex items-center justify-between border ${
                         selectedZone?.zone_id === f.properties.zone_id 
                           ? 'bg-blue-50/80 border-blue-200 text-blue-900 shadow-sm font-semibold' 
-                          : hoveredZone?.zone_id === f.properties.zone_id
-                            ? 'bg-slate-50 border-slate-300 text-slate-800'
-                            : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
+                          : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -248,7 +262,7 @@ const PlantationSuitability = () => {
                         <span>Zone {f.properties.zone_id}</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs text-slate-400 font-mono">{f.properties.area_ha?.toFixed(1)}ha</span>
+                        <span className="text-xs text-slate-400 font-mono">{f.properties.plantable_ha?.toFixed(1)}ha</span>
                         <div className={`w-2 h-2 rounded-full ${
                           f.properties.priority === 'High' ? 'bg-green-500' : 
                           f.properties.priority === 'Medium' ? 'bg-yellow-500' : 
@@ -267,13 +281,13 @@ const PlantationSuitability = () => {
   );
 };
 
-const ZoneDetailCard = ({ zone, isHovered, onClear }: any) => (
-  <div className={`p-5 space-y-4 border-b border-slate-100 transition-colors ${isHovered ? 'bg-slate-50' : 'bg-blue-50/30'}`}>
+const ZoneDetailCard = ({ zone, onClear }: any) => (
+  <div className="p-5 space-y-4 border-b border-slate-100 transition-colors bg-blue-50/30">
     <div className="flex justify-between items-center mb-1">
-       <div className={`text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full ${isHovered ? 'text-slate-500 bg-slate-200' : 'text-blue-600 bg-blue-100'}`}>
-         {isHovered ? 'Previewing' : 'Selected'}
+       <div className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full text-blue-600 bg-blue-100">
+         Selected
        </div>
-       {!isHovered && <button onClick={onClear} className="text-xs text-slate-400 hover:text-slate-700 font-medium transition-colors">Clear</button>}
+       <button onClick={onClear} className="text-xs text-slate-400 hover:text-slate-700 font-medium transition-colors">Clear</button>
     </div>
     
     <div className="bg-white p-5 rounded-xl border border-slate-200/60 shadow-sm relative overflow-hidden">
@@ -289,7 +303,10 @@ const ZoneDetailCard = ({ zone, isHovered, onClear }: any) => (
             'text-yellow-600'
           }`}>{zone.priority}</span>
         } />
-        <DetailRow label="Area" value={<span className="font-mono">{zone.area_ha?.toFixed(2)} ha</span>} />
+        <DetailRow label="Plantable Area" value={<span className="font-mono text-green-700 font-bold">{zone.plantable_ha?.toFixed(2)} ha</span>} />
+        {zone.excluded_ha > 0 && (
+          <DetailRow label="Excluded (Constraints)" value={<span className="font-mono text-red-500 text-xs">{zone.excluded_ha?.toFixed(2)} ha</span>} />
+        )}
       </div>
 
       <div className="mt-5 pt-4 border-t border-slate-100">
