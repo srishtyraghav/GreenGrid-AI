@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { fetchTreeRequirementZones } from '../services/api';
 import { Bar } from 'react-chartjs-2';

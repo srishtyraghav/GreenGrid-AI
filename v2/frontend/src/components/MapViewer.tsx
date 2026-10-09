@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, LayersControl, useMap, GeoJSON } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -77,7 +77,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({ center = [28.6139, 77.2090
                 dashArray: '5, 5'
               }} 
               interactive={true}
-              onEachFeature={(feature, layer) => {
+              onEachFeature={(_feature, layer) => {
                 layer.bindTooltip("NCR Study Area", { permanent: false, direction: "center", className: "bg-black/70 text-white border-0 shadow-none font-semibold text-xs px-2 py-1" });
               }}
             />

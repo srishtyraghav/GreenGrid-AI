@@ -1,4 +1,3 @@
-import React from 'react';
 import { BookOpen, ArrowDown } from 'lucide-react';
 
 const Methodology = () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Leaf, ThermometerSun, Map, TreePine, Droplets, Info, LayoutDashboard } from 'lucide-react';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Overview from './pages/Overview';

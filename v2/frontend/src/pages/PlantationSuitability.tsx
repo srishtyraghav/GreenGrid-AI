@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { fetchPriorityZones, fetchTreeRequirementSummary, fetchTreeRequirementZones } from '../services/api';
 import { MapViewer } from '../components/MapViewer';
@@ -98,7 +98,7 @@ const PlantationSuitability = () => {
   });
 
   // Calculate Chart Data (Memoized to prevent canvas redraws on hover)
-  const chartData = React.useMemo(() => {
+  const chartData = useMemo(() => {
     const priorityCounts = { High: 0, Medium: 0, Low: 0 };
     const priorityArea = { High: 0, Medium: 0, Low: 0 };
     features.forEach((f: any) => {

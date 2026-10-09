@@ -1,4 +1,3 @@
-import React from 'react';
 import { ThermometerSnowflake, AlertCircle, ArrowDown } from 'lucide-react';
 
 const CoolingPrediction = () => {

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { fetchTreeRequirementSummary } from '../services/api';
-import { Leaf, Target, TrendingDown, Layers, Calendar, Cpu, Satellite, Database, ArrowRight } from 'lucide-react';
+import { Leaf, Target, TrendingDown, Layers, Calendar, Cpu, Satellite, Database } from 'lucide-react';
 
 const Overview = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const { year, scenario } = useAppContext();
