@@ -54,17 +54,21 @@ const Navigation = ({ activeTab, setActiveTab }: any) => {
       </nav>
       
       <div className="p-6 border-t border-slate-800/50 bg-slate-900/50 backdrop-blur-md">
-        <GlobalControls />
+        <GlobalControls activeTab={activeTab} />
       </div>
     </div>
   );
 };
 
-const GlobalControls = () => {
-  const { year, setYear, scenario, setScenario } = useAppContext();
-  
+const YEARLESS_TABS = ['suitability', 'trees', 'cooling'];
+
+const GlobalControls = ({ activeTab }: { activeTab: string }) => {
+  const { year, setYear } = useAppContext();
+  const showYear = !YEARLESS_TABS.includes(activeTab);
+
   return (
     <div className="space-y-5">
+      {showYear && (
       <div>
         <label className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
           <span>Analysis Year</span>
@@ -80,17 +84,10 @@ const GlobalControls = () => {
           ))}
         </select>
       </div>
-      <div>
-        <label className="block text-xs font-semibold text-slate-400 mb-2">Planning Scenario</label>
-        <select 
-          value={scenario} 
-          onChange={(e) => setScenario(e.target.value)}
-          className="w-full bg-slate-950 border border-slate-700/50 text-sm rounded-lg px-3 py-2.5 text-white outline-none focus:border-green-500 transition-colors shadow-inner appearance-none cursor-pointer"
-        >
-          <option value="v2_constrained">v2_constrained (Primary)</option>
-          <option value="v1_parity">v1_parity (Baseline)</option>
-        </select>
-      </div>
+      )}
+      {!showYear && (
+        <p className="text-[11px] text-slate-500 italic">2026-only module — year selection not applicable.</p>
+      )}
     </div>
   );
 }

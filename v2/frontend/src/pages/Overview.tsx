@@ -4,20 +4,19 @@ import { fetchTreeRequirementSummary } from '../services/api';
 import { Leaf, Target, TrendingDown, Layers, Calendar, Cpu, Satellite, Database } from 'lucide-react';
 
 const Overview = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
-  const { year, scenario } = useAppContext();
+  const { scenario } = useAppContext();
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetchTreeRequirementSummary(year, scenario)
+    fetchTreeRequirementSummary(2026, scenario)
       .then(data => {
-        const primary = data.find((row: any) => row.is_primary_density);
-        if(primary) setSummary(primary);
+        setSummary(Array.isArray(data) && data.length ? data[0] : null);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [year, scenario]);
+  }, [scenario]);
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-6">
@@ -39,41 +38,34 @@ const Overview = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => 
             AI-Driven Urban Cooling & Smart Energy Optimization. Decision-support dashboard for geospatial tree-plantation planning.
           </p>
           <div className="flex flex-wrap gap-4 mt-8">
-            <Badge icon={Calendar} label={`Snapshot: ${year}`} />
-            <Badge icon={Target} label="NCR Study Area" />
+            <Badge icon={Calendar} label="Snapshot: 2026" />
+            <Badge icon={Target} label="Delhi NCT Study Area" />
             <Badge icon={Database} label={`Scenario: ${scenario}`} />
           </div>
         </div>
       </header>
 
       {/* Primary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <StatCard 
-          title="Priority Zones" 
-          value={loading ? "..." : (summary ? summary.n_zones : "N/A")}
+          title="Shortlisted Sites" 
+          value={loading ? "..." : (summary ? summary.shortlist_zones : "N/A")}
           icon={Target}
-          description="High/Medium/Low priority clusters"
+          description="Top-ranked 2026 candidate sites"
           color="indigo"
         />
         <StatCard 
-          title="Plantable Area" 
-          value={loading ? "..." : (summary ? `${summary.plantable_ha.toFixed(2)} ha` : "N/A")}
+          title="Shortlist Area" 
+          value={loading ? "..." : (summary ? `${Number(summary.shortlist_ha).toLocaleString()} ha` : "N/A")}
           icon={Layers}
-          description="Constraints successfully applied"
+          description="Usable planting area after exclusions"
           color="amber"
         />
         <StatCard 
-          title="Primary Density" 
-          value="1,000 / ha"
+          title="Shortlist Trees" 
+          value={loading ? "..." : (summary ? Math.floor(Number(summary.shortlist_ha) * 1000).toLocaleString() : "N/A")}
           icon={Leaf}
-          description="Default planning scenario"
-          color="blue"
-        />
-        <StatCard 
-          title="Total Estimated Trees" 
-          value={loading ? "..." : (summary ? summary.recommended_trees.toLocaleString() : "N/A")}
-          icon={Leaf}
-          description="At primary density across plantable area"
+          description="Reference scenario @1,000 trees/ha"
           color="green"
         />
       </div>

@@ -1,26 +1,23 @@
-"""V2 Phase 7 verification gate — numbered PASS/FAIL checklist.
-
-Read-only re-derivation of every Phase 7 output family. Exit 0 = all PASS.
+"""V2 Phase 7 v3 verification gate — numbered PASS/FAIL checklist. Read-only.
 
 Checks
 ------
-1.  lineage: phase6 manifest present; Phase 7 record carries the frozen
-    primary-model lineage (RF via marker).
-2.  grid/CRS/dims: scenario rasters match the authoritative 1768x1874
-    EPSG:4326 grid.
-3.  NoData consistent with the phase6 domain: v1_parity valid set == phase6
-    domain; v2_constrained valid set == v1_parity minus constraint union;
-    v2_constrained valid pixels never intersect the attributed constraint
-    raster.
-4.  constraint rasters truly exclude: re-burn the three GeoJSONs and compare
-    masks exactly against ``constraints_rasters/``; also verify the
-    attributed raster equals precedence application.
-5.  class/priority consistency: suitability_class == classify(suitability);
-    priority raster == priority_tier(class) on the scenario domain.
-6.  tables agree with rasters: priority-tier counts, per-block domain sums,
-    zone pixel counts and zone-id rasters all reconcile.
-7.  both scenarios present for every year; V1-parity summary recorded.
-8.  manifest + pipeline record complete.
+1.  methodology recorded: pooled references, fixed thresholds, formulas,
+    feasibility rule, scenario definitions.
+2.  raster contract: full authoritative grid; cooling_need/suitability/
+    opportunity in [0,1]; priority_score in [0,1] and defined ONLY on
+    feasible px; priority_class in {0,1,2} on feasible, 255 elsewhere.
+3.  pooled references recompute (sampled from phase3 rasters, tolerance).
+4.  priority classes == fixed documented thresholds applied to the written
+    priority_score raster (exact recompute).
+5.  class-share tables agree with rasters and sum to feasible px; feasible
+    px agrees with the named-filter recompute.
+6.  exclusion accounting per reason recomputed independently (v2: water >
+    buildings > road_surfaces precedence, then landuse, then veg>=0.30;
+    v1: constraints reported as 0 by definition).
+7.  cross-year comparability: thresholds identical across years (structural)
+    + per-year class shares recorded.
+8.  artifacts complete (manifest, record, rasters, tables).
 """
 
 from __future__ import annotations
@@ -35,8 +32,8 @@ import pandas as pd
 import rasterio
 
 from ..common import GRID_FILE_DEFAULT, PROJECT_ROOT, Grid
-from . import suitability as S
-from .constraints import CONSTRAINT_FILES, burn_layer
+from ..phase7.build import DISCOURAGED_LU_CODES, eligible_lu_grid
+from ..phase7.suitability import PRIORITY_CLASS_LABELS
 
 RESULTS: list[tuple[str, bool, str]] = []
 
@@ -47,16 +44,20 @@ def check(n: str, name: str, ok: bool, detail: str = "") -> bool:
     return ok
 
 
+def band(p):
+    with rasterio.open(p) as ds:
+        a = ds.read(1)
+        nd = ds.nodata
+    return a, nd
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=str(PROJECT_ROOT / "data" / "phase7"))
-    ap.add_argument("--phase6-dir", default=str(PROJECT_ROOT / "data" / "phase6"))
-    ap.add_argument("--constraints-dir",
-                    default=str(PROJECT_ROOT / "data" / "phase2" / "constraints"))
+    ap.add_argument("--phase3-root", default=str(PROJECT_ROOT / "data" / "phase3"))
     ap.add_argument("--grid-file", default=str(GRID_FILE_DEFAULT))
     args = ap.parse_args(argv)
     out_root = Path(args.out)
-    phase6_dir = Path(args.phase6_dir)
     grid = Grid.from_file(Path(args.grid_file))
     shape = grid.shape
 
@@ -64,111 +65,154 @@ def main(argv=None) -> int:
     years = [int(y) for y in record["years"]]
     ok_all = True
 
-    # -- [1] lineage ---------------------------------------------------------
-    p6 = json.loads((phase6_dir / "phase6_manifest.json").read_text())
-    lin_ok = bool(p6.get("primary_model")) and \
-        bool(record.get("model_lineage"))
-    ok_all &= check("1", "lineage: phase6 manifest + RF primary recorded",
-                    lin_ok, f"model={p6.get('primary_model', {}).get('artifact')}")
+    # -- [1] methodology ------------------------------------------------------
+    ok1 = all(k in record for k in ("pooled_references", "priority_thresholds",
+                                    "formulas", "feasibility_rule"))
+    ok_all &= check("1", "methodology recorded (pooled refs, thresholds, formulas)",
+                    ok1)
 
-    # -- [2] grid/CRS/dims ----------------------------------------------------
-    import rasterio.crs
-    ref_crs = rasterio.crs.CRS.from_epsg(4326)
-    grid_ok = True
+    # -- [2] raster contract ----------------------------------------------------
+    ok2 = True
+    detail2 = []
     for scenario in record["scenarios"]:
         for y in years:
-            for name in ("suitability", "suitability_class", "priority",
-                         "priority_zone_ids", "exclusion_mask"):
-                tag = f"{scenario}_{y}" if name != "priority_zone_ids" else f"{scenario}_{y}"
-                fname = {"suitability": f"suitability_{scenario}_{y}.tif",
-                         "suitability_class": f"suitability_class_{scenario}_{y}.tif",
-                         "priority": f"priority_{scenario}_{y}.tif",
-                         "priority_zone_ids": f"priority_zone_ids_{scenario}_{y}.tif",
-                         "exclusion_mask": f"exclusion_mask_{scenario}_{y}.tif"}[name]
-                with rasterio.open(out_root / scenario / "rasters" / fname) as ds:
-                    grid_ok &= (ds.height, ds.width) == shape and ds.crs == ref_crs
-    ok_all &= check("2", "scenario rasters match authoritative grid/CRS/dims",
-                    grid_ok, f"{len(record['scenarios'])}x{len(years)}x5 rasters")
-
-    # -- [3/5/6] per-year scenario content -----------------------------------
-    attributed_path = out_root / "constraints_rasters" / "constraint_attributed_30m.tif"
-    with rasterio.open(attributed_path) as ds:
-        attributed = ds.read(1)
-
-    for y in years:
-        dom_p6 = p6["domain_counts"][str(y)]["domain_pixels"]
-        valid = {}
-        for scenario in record["scenarios"]:
-            with rasterio.open(out_root / scenario / "rasters" / f"suitability_{scenario}_{y}.tif") as ds:
-                s = ds.read(1)
-                nd = ds.nodata
-            valid[scenario] = s != nd
-        v1, v2 = valid["v1_parity"], valid["v2_constrained"]
-        ok3a = int(v1.sum()) == dom_p6
-        ok3b = bool(np.all(~v2 | v1))                       # v2 subset of v1
-        ok3c = int((v2 & (attributed > 0)).sum()) == 0      # no constraint px in v2
-        n_excl = int((v1 & ~v2).sum())
-        ok_all &= check(f"3-{y}", f"{y} NoData consistent with phase6 domain + constraints",
-                        ok3a and ok3b and ok3c,
-                        f"v1={int(v1.sum()):,} p6={dom_p6:,} v2={int(v2.sum()):,} excluded={n_excl:,}")
-
-        for scenario in record["scenarios"]:
             rdir = out_root / scenario / "rasters"
-            tdir = out_root / scenario / "tables"
-            with rasterio.open(rdir / f"suitability_{scenario}_{y}.tif") as ds:
-                score = ds.read(1)
-            with rasterio.open(rdir / f"suitability_class_{scenario}_{y}.tif") as ds:
-                cls = ds.read(1)
-            with rasterio.open(rdir / f"priority_{scenario}_{y}.tif") as ds:
-                pri = ds.read(1)
-            with rasterio.open(rdir / f"priority_zone_ids_{scenario}_{y}.tif") as ds:
-                zids = ds.read(1)
-            dom = valid[scenario]
-            ok5a = bool(np.array_equal(
-                S.classify(score[dom].astype(np.float64)), cls[dom].astype(np.int16)))
-            ok5b = bool(np.array_equal(S.priority_tier(cls[dom].astype(np.int16)),
-                                       pri[dom].astype(np.uint8)))
-            ok_all &= check(f"5-{scenario[:2]}-{y}", f"{y} {scenario} class/priority consistent",
-                            ok5a and ok5b)
+            for name, lo, hi in (("cooling_need", 0.0, 1.0),
+                                 ("suitability", 0.0, 1.0),
+                                 ("plantation_opportunity", 0.0, 1.0),
+                                 ("priority_score", 0.0, 1.0)):
+                a, nd = band(rdir / f"{name}_{scenario}_{y}.tif")
+                if (a.shape != shape) or nd != -1.0:
+                    ok2 = False
+                    continue
+                valid = a != -1
+                if valid.any() and (a[valid].min() < lo - 1e-6 or a[valid].max() > hi + 1e-6):
+                    ok2 = False
+                    detail2.append(f"{name}_{y}")
+            a, nd = band(rdir / f"priority_class_{scenario}_{y}.tif")
+            feas_a, _ = band(rdir / f"feasibility_mask_{scenario}_{y}.tif")
+            if nd != 255 or not np.isin(np.unique(a), [0, 1, 2, 255]).all():
+                ok2 = False
+            if not np.array_equal(a != 255, feas_a == 1):
+                ok2 = False
+                detail2.append(f"class/feasible mismatch {scenario} {y}")
+    ok_all &= check("2", "raster contract (grid, [0,1] scores, class only on "
+                    "feasible)", ok2, "; ".join(detail2[:4]))
 
-            tiers = pd.read_csv(tdir / f"priority_tiers_{scenario}_{y}.csv")
-            tr = tiers.set_index("priority")["pixel_count"]
-            ok6a = (int(tr["High"]) == int((pri[dom] == 3).sum())
-                    and int(tr["Medium"]) == int((pri[dom] == 2).sum())
-                    and int(tr["Low"]) == int((pri[dom] == 1).sum()))
-            blk = pd.read_csv(tdir / f"block_suitability_{scenario}_{y}.csv")
-            ok6b = int(blk["domain_px"].sum()) == int(dom.sum())
-            ok6c = int(blk["class_ge3_px"].sum()) == int((cls[dom] >= 3).sum())
-            zstat = pd.read_csv(tdir / f"priority_zone_statistics_{scenario}_{y}.csv")
-            ok6d = int(zstat["pixel_count"].sum()) == int((zids > 0).sum())
-            ok6e = len(zstat) == int(zids.max())
-            ok_all &= check(f"6-{scenario[:2]}-{y}", f"{y} {scenario} tables agree with rasters",
-                            ok6a and ok6b and ok6c and ok6d and ok6e)
+    # -- [3] pooled references recompute -----------------------------------------
+    from v2.phase7.build import compute_pooled_references
+    refs_rec = record["pooled_references"]
+    refs_now = compute_pooled_references(tuple(years), Path(args.phase3_root))
+    ok3 = True
+    for k in ("lst", "ndvi", "ndbi", "veg"):
+        tol = max(0.02, 0.002 * abs(refs_rec[k]["p99"]))
+        ok3 &= abs(refs_rec[k]["p1"] - refs_now[k]["p1"]) < tol
+        ok3 &= abs(refs_rec[k]["p99"] - refs_now[k]["p99"]) < tol
+    ok_all &= check("3", "pooled references recompute (sampled, tolerance)", ok3,
+                    f"LST p1/p99={refs_rec['lst']['p1']:.2f}/{refs_rec['lst']['p99']:.2f}")
 
-    # -- [4] constraint rasters truly exclude ---------------------------------
-    masks_ok = True
-    for name, fname in CONSTRAINT_FILES.items():
-        with rasterio.open(out_root / "constraints_rasters" / f"constraint_{name}_30m.tif") as ds:
-            burned = ds.read(1).astype(bool)
-        reburn = burn_layer(Path(args.constraints_dir) / fname, grid)
-        masks_ok &= bool(np.array_equal(burned, reburn))
-    ok_all &= check("4", "constraint rasters == fresh re-burn of the GeoJSONs",
-                    masks_ok, "exact mask equality, all 3 layers")
+    # -- [4] classes == fixed thresholds on written scores -------------------------
+    t1 = record["priority_thresholds"]["t1_medium"]
+    t2 = record["priority_thresholds"]["t2_high"]
+    ok4 = True
+    for scenario in record["scenarios"]:
+        for y in years:
+            sc_, _ = band(out_root / scenario / "rasters" / f"priority_score_{scenario}_{y}.tif")
+            cl_, _ = band(out_root / scenario / "rasters" / f"priority_class_{scenario}_{y}.tif")
+            scf = sc_.astype(np.float64)   # compare in float64 (build classifies
+            exp = np.full(scf.shape, 255, dtype=np.uint8)   # the f32-rounded score)
+            m = scf != -1
+            exp[m & (scf < t1)] = 0
+            exp[m & (scf >= t1) & (scf < t2)] = 1
+            exp[m & (scf >= t2)] = 2
+            ok4 &= bool(np.array_equal(exp, cl_))
+    ok_all &= check("4", "priority classes == documented fixed thresholds "
+                    f"(t1={t1:.4f}, t2={t2:.4f}) applied to written scores", ok4)
 
-    # -- [7] both scenarios + V1-parity summary --------------------------------
-    summ_ok = all(sc in record["summary"][str(y)] for y in years
-                  for sc in ("v1_parity", "v2_constrained"))
-    parity_ok = all("class_ge3_ha" in record["summary"][str(y)]["v1_parity"]
-                    for y in years)
-    ok_all &= check("7", "both scenarios present + V1-parity summary recorded",
-                    summ_ok and parity_ok)
+    # -- [5] tables agree; domain == build definition (finite lst+ndvi+ndbi+veg)
+    from v2.phase4.assemble_features import load_phase3_year, load_static
+    from v2.phase7.build import load_year_arrays
+    static = load_static(Path(args.phase3_root))
+    lu_codes = np.where(np.isfinite(static["landuse_class"]),
+                        static["landuse_class"], 255.0).astype(np.int64)
+    elig = eligible_lu_grid(lu_codes)
+    att = band(out_root / "constraints_rasters" / "constraint_attributed_30m.tif")[0] > 0
+    ok5 = True
+    for scenario in record["scenarios"]:
+        for y in years:
+            cl_, _ = band(out_root / scenario / "rasters" / f"priority_class_{scenario}_{y}.tif")
+            cn_, _ = band(out_root / scenario / "rasters" / f"cooling_need_{scenario}_{y}.tif")
+            feasible = cl_ != 255
+            dom_exp = load_year_arrays(Path(args.phase3_root), y)["domain"]
+            dom = cn_ != -1
+            ok5 &= bool(np.array_equal(dom, dom_exp))
+            shares = pd.read_csv(out_root / scenario / "tables"
+                                 / f"class_shares_{scenario}_{y}.csv")
+            tot = int(shares["pixel_count"].sum())
+            ok5 &= tot == int(feasible.sum())
+            ok5 &= set(shares["class"]) == set(PRIORITY_CLASS_LABELS.values())
+    ok_all &= check("5", "class-share tables agree with rasters; domain == phase3 "
+                    "finite LST", ok5)
 
-    # -- [8] artifacts ----------------------------------------------------------
-    need = [out_root / "phase7_manifest.json", out_root / "phase7_pipeline_record.json",
-            attributed_path]
+    # -- [6] exclusion accounting recompute ------------------------------------------
+    from v2.phase7.build import load_year_arrays
+    ok6 = True
+    for scenario in record["scenarios"]:
+        for y in years:
+            arr = load_year_arrays(Path(args.phase3_root), y)
+            dom = arr["domain"]
+            vg = arr["vegetation_cover"]
+            del arr
+            ea = pd.read_csv(out_root / scenario / "tables"
+                             / f"exclusion_accounting_{scenario}_{y}.csv"
+                             ).set_index("reason")["area_ha"]
+            remaining = dom.copy()
+            exp = {}
+            for name in ("water", "buildings", "road_surfaces"):
+                layer = att if False else None
+                with rasterio.open(out_root / "constraints_rasters"
+                                   / f"constraint_{name}_30m.tif") as ds:
+                    lm = ds.read(1).astype(bool)
+                if scenario == "v2_constrained":
+                    hit = remaining & lm
+                    exp[name] = hit.sum() * 0.09
+                    remaining &= ~lm
+                else:
+                    exp[name] = 0.0
+            exp["landuse_ineligible"] = (remaining & ~elig).sum() * 0.09
+            remaining &= elig
+            exp["planting_space_veg_ge_0.30"] = (remaining & ~(np.isfinite(vg) & (vg < 0.30))).sum() * 0.09
+            exp["FEASIBLE"] = (remaining & np.isfinite(vg) & (vg < 0.30)).sum() * 0.09
+            for k, v in exp.items():
+                ok6 &= abs(float(ea[k]) - round(v, 1)) < 0.2
+    ok_all &= check("6", "exclusion accounting per reason independently recomputed",
+                    ok6)
+
+    # -- [7] cross-year comparability ---------------------------------------------------
+    ok7 = True
+    shares_tab = {}
+    for scenario in record["scenarios"]:
+        rows = []
+        for y in years:
+            sh = pd.read_csv(out_root / scenario / "tables"
+                             / f"class_shares_{scenario}_{y}.csv")
+            rows.append({r["class"]: r["pct_of_feasible"] for _, r in sh.iterrows()})
+        shares_tab[scenario] = rows
+        ok7 &= all(set(r) == {"Low", "Medium", "High"} for r in rows)
+    ok_all &= check("7", "fixed thresholds across years (structural comparability); "
+                    "per-year shares recorded", ok7,
+                    f"v2 2026 shares={shares_tab['v2_constrained'][-1]}")
+
+    # -- [8] artifacts ---------------------------------------------------------------------
+    need = [out_root / "phase7_manifest.json", out_root / "phase7_pipeline_record.json"]
+    for scenario in record["scenarios"]:
+        for y in years:
+            need += [out_root / scenario / "tables" / f"class_shares_{scenario}_{y}.csv",
+                     out_root / scenario / "tables" / f"full_area_stats_{scenario}_{y}.csv",
+                     out_root / scenario / "tables" / f"exclusion_accounting_{scenario}_{y}.csv"]
     missing = [str(p) for p in need if not p.exists()]
-    ok_all &= check("8", "manifest + pipeline record + constraint rasters present",
-                    not missing, f"missing={missing}" if missing else "all present")
+    ok_all &= check("8", "manifest + record + all tables present",
+                    not missing, f"missing={len(missing)}" if missing else "all present")
 
     fails = [r for r in RESULTS if not r[1]]
     print(f"\n[SUMMARY] {len(RESULTS) - len(fails)}/{len(RESULTS)} checks pass, "

@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-import { fetchBoundary } from '../services/api';
+import { fetchBoundary, fetchOsmReferenceBoundary } from '../services/api';
 
 let DefaultIcon = L.icon({
     iconUrl: icon,
@@ -37,9 +37,11 @@ const BoundsComponent = ({ geoData }: { geoData: any }) => {
 
 export const MapViewer: React.FC<MapViewerProps> = ({ center = [28.6139, 77.2090], zoom = 11, children, geoData }) => {
   const [boundary, setBoundary] = useState<any>(null);
+  const [osmBoundary, setOsmBoundary] = useState<any>(null);
 
   useEffect(() => {
     fetchBoundary().then(setBoundary).catch(console.error);
+    fetchOsmReferenceBoundary().then(setOsmBoundary).catch(console.error);
   }, []);
 
   return (
@@ -64,8 +66,10 @@ export const MapViewer: React.FC<MapViewerProps> = ({ center = [28.6139, 77.2090
           />
         </LayersControl.BaseLayer>
         
+        {children}
+        
         {boundary && (
-          <LayersControl.Overlay checked name="Study Area Boundary">
+          <LayersControl.Overlay checked name="Study Area (data extent)">
             <GeoJSON 
               data={boundary} 
               style={{
@@ -78,13 +82,31 @@ export const MapViewer: React.FC<MapViewerProps> = ({ center = [28.6139, 77.2090
               }} 
               interactive={true}
               onEachFeature={(_feature, layer) => {
-                layer.bindTooltip("NCR Study Area", { permanent: false, direction: "center", className: "bg-black/70 text-white border-0 shadow-none font-semibold text-xs px-2 py-1" });
+                layer.bindTooltip("Study Area — data extent (GAUL Delhi clip)", { permanent: false, direction: "center", className: "bg-black/70 text-white border-0 shadow-none font-semibold text-xs px-2 py-1" });
               }}
             />
           </LayersControl.Overlay>
         )}
-        
-        {children}
+
+        {osmBoundary && (
+          <LayersControl.Overlay name="Delhi NCT (OSM reference)">
+            <GeoJSON 
+              data={osmBoundary} 
+              style={{
+                color: '#38bdf8',
+                weight: 1.5,
+                opacity: 0.7,
+                fillColor: '#38bdf8',
+                fillOpacity: 0.0,
+                dashArray: '2, 4'
+              }} 
+              interactive={true}
+              onEachFeature={(_feature, layer) => {
+                layer.bindTooltip("Delhi NCT — OSM relation 1942586 (reference)", { permanent: false, direction: "center", className: "bg-black/70 text-white border-0 shadow-none font-semibold text-xs px-2 py-1" });
+              }}
+            />
+          </LayersControl.Overlay>
+        )}
       </LayersControl>
       {geoData && <BoundsComponent geoData={geoData} />}
     </MapContainer>

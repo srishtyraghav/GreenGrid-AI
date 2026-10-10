@@ -84,6 +84,22 @@ def robust_minmax(values: np.ndarray) -> Tuple[np.ndarray, Dict]:
                                          "n_cells": int(values.size)}
 
 
+def pooled_p1_p99(samples: np.ndarray) -> Tuple[float, float]:
+    """Fixed pooled reference from concatenated valid samples (all years)."""
+    p1, p99 = np.percentile(samples, NORM_PERCENTILES)
+    if not p99 > p1:
+        raise AssertionError(f"degenerate pooled range: p1={p1}, p99={p99}")
+    return float(p1), float(p99)
+
+
+def pooled_normalize(values: np.ndarray, p1: float, p99: float) -> np.ndarray:
+    """Clip to the FIXED pooled reference and scale to [0, 1] (NaN preserved)."""
+    out = np.full(values.shape, np.nan, dtype=np.float64)
+    m = np.isfinite(values)
+    out[m] = np.clip((np.clip(values[m], p1, p99) - p1) / (p99 - p1), 0.0, 1.0)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Component scores (config.py)
 # ---------------------------------------------------------------------------
@@ -233,3 +249,85 @@ def validate_geometries(polygons: Dict[int, object]) -> Dict:
         "all_valid": (not invalid and not zero_area
                       and len(ids) == len(set(ids))),
     }
+
+
+# ---------------------------------------------------------------------------
+# v3 methodology (fixed pooled references — cross-year comparable)
+# ---------------------------------------------------------------------------
+# Cooling need (0-1), LST-led, INDEPENDENT of Phase 6: the V1 need's
+# severity_score term (itself trained on per-year LST tertiles) is replaced
+# by direct pooled-LST normalization; the V1 non-severity weights (0.25
+# 1-NDVI, 0.20 NDBI) are kept and renormalized to sum to 1.
+COOLING_NEED_WEIGHTS = {"lst": 0.55, "one_minus_ndvi": 0.25, "ndbi": 0.20}
+
+# Plantation opportunity component (0-1): V1 opportunity weights VERBATIM
+# (v1/src/suitability/config.py OPPORTUNITY_WEIGHTS), rebased from 0-100 to
+# 0-1 with pooled references for NDVI/NDBI and frozen static curves.
+OPPORTUNITY_WEIGHTS_01 = {
+    "landuse_eligibility": 0.30,
+    "built_up_inverse": 0.25,
+    "road_accessibility": 0.15,
+    "green_proximity": 0.15,
+    "planting_headroom": 0.15,
+}
+
+# Priority (separate from suitability): equal-weight documented combination,
+# computed over feasible land only.
+PRIORITY_WEIGHTS = {"cooling_need": 0.5, "suitability": 0.5}
+PRIORITY_CLASS_LABELS = {0: "Low", 1: "Medium", 2: "High"}
+
+
+def cooling_need(lst_n, one_minus_ndvi_n, ndbi_n) -> np.ndarray:
+    """0-1 cooling-need score from POOLED-normalized inputs (NaN preserved)."""
+    w = COOLING_NEED_WEIGHTS
+    out = (w["lst"] * lst_n + w["one_minus_ndvi"] * one_minus_ndvi_n
+           + w["ndbi"] * ndbi_n)
+    return np.clip(out, 0.0, 1.0)
+
+
+def opportunity_component_01(norm: Dict[str, np.ndarray],
+                             static: Dict[str, np.ndarray]) -> np.ndarray:
+    """V1 opportunity weights verbatim, 0-1: 0.30*landuse_eligibility +
+    0.25*(1-n(NDBI)) + 0.15*road_band + 0.15*green_proximity +
+    0.15*(1-n(NDVI)); landuse nodata(255) neutral 50/100=0.5 (class 0)."""
+    w = OPPORTUNITY_WEIGHTS_01
+    components = {
+        "landuse_eligibility": landuse_eligibility(static["landuse"]) / 100.0,
+        "built_up_inverse": 1.0 - norm["ndbi"],
+        "road_accessibility": road_accessibility_score(static["dist_road_m"]) / 100.0,
+        "green_proximity": green_proximity_score(static["dist_vegetation_m"]) / 100.0,
+        "planting_headroom": 1.0 - norm["ndvi"],
+    }
+    for name, values in components.items():
+        finite_vals = values[np.isfinite(values)]
+        if finite_vals.size == 0 or finite_vals.min() < 0.0 or finite_vals.max() > 1.0:
+            raise AssertionError(f"opportunity component {name} outside [0,1]")
+    opp = np.zeros_like(components["landuse_eligibility"])
+    for name, weight in w.items():
+        opp += weight * components[name]
+    return np.clip(opp, 0.0, 1.0)
+
+
+def suitability_product(need01: np.ndarray, opp01: np.ndarray) -> np.ndarray:
+    """V1 gated product rebased: suitability = cooling_need x opportunity
+    (0-1). Multiplicative gate: zero opportunity -> zero suitability."""
+    return np.clip(need01 * opp01, 0.0, 1.0)
+
+
+def classify_priority(priority_score: np.ndarray, t1: float, t2: float
+                      ) -> np.ndarray:
+    """FIXED thresholds (pooled terciles over feasible land): Low < t1 <=
+    Medium < t2 <= High. NaN stays -1 (excluded pixels carry no priority)."""
+    cls = np.full(priority_score.shape, -1, dtype=np.int16)
+    m = np.isfinite(priority_score)
+    cls[m & (priority_score < t1)] = 0
+    cls[m & (priority_score >= t1) & (priority_score < t2)] = 1
+    cls[m & (priority_score >= t2)] = 2
+    return cls
+
+
+def priority_rationale(cls: int, need: float, suit: float,
+                       veg: float) -> str:
+    band = PRIORITY_CLASS_LABELS.get(cls, "None")
+    return (f"priority={band} (pooled fixed bands; need={need:.2f}, "
+            f"suitability={suit:.2f}, vegetation_cover={veg:.2f})")

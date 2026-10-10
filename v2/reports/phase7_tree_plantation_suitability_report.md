@@ -1,120 +1,65 @@
-# GreenGrid AI V2 — Phase 7: Tree Plantation Suitability (Production Run)
+# V2 Phase 7 — Tree Plantation Suitability Report (2026-only recommendation module)
 
-**Status: COMPLETE — verification gate 30/30 PASS (2026-10-05)**
-**Inputs: Phase 6 relative heat-severity products (frozen RF primary) + Phase 2 constraint layers**
-**Formulation: frozen V1 suitability spec, verbatim port (weights predefined, not tuned)**
+**Framing:** a **relative plantation-suitability decision-support ranking** for
+the 2026 W4 snapshot — not physical UHI intensity, not planting-success
+predictions, not a statement of legal availability, ownership, or field
+feasibility. Single-year 2026 product; no annual-comparison claims. Heat need
+stays separate from feasibility throughout. Verification gate **8/8 PASS**.
 
----
+## Fixed pooled references (documented exact values)
 
-## 1. Objective
+Pooled 2022–2026 valid W4 pixels (200k samples/year/variable): LST p1/p99 =
+**34.359 / 55.228 °C**; NDVI 0.021 / 0.724; NDBI −0.273 / 0.160;
+vegetation_cover 0.000 / 0.898. All scores clip to these fixed bounds — never
+per-year min-max.
 
-Rank every valid 30 m pixel in Delhi for potential plantation suitability for
-each study year (2022–2026, W4 May–Jun window), and delimit priority planting
-zones — the "where to plant" layer. Tree-requirement quantities are Phase 8
-and are intentionally NOT part of this phase.
+## Full-area components (2026 continuous layers, unchanged)
 
-## 2. Inputs and Lineage
+1. **Cooling need (0–1)** = 0.55·n(LST) + 0.25·n(1−NDVI) + 0.20·n(NDBI),
+   LST-led, Phase-6-independent.
+2. **Feasibility (hard mask)** = eligible landuse (frozen rule: excl.
+   industrial 5 / retail 7; nodata neutral-eligible) ∧ ~water ∧ ~buildings ∧
+   ~road-surfaces; per-reason exclusion accounting partitions the domain.
+   vegetation_cover < 0.30 is the documented planting-space criterion.
+3. **Suitability (0–1)** = cooling_need × [0.30·LU + 0.25·(1−n(NDBI)) +
+   0.15·road + 0.15·green + 0.15·(1−n(NDVI))] (V1 weights, gated product).
 
-| Input | Source |
-|---|---|
-| Heat-need drivers | `v2/data/phase6/` severity_score / severity / confidence rasters + Phase 4 feature stack (NDVI, NDBI, LST) at full grid |
-| Environmental drivers | Phase 4 static/context layers (landuse class, built-up, roads, vegetation) |
-| Planting constraints | `v2/data/phase2/constraints/`: osm_water_delhi, osm_buildings_delhi, osm_road_surfaces_delhi (GeoJSON → 30 m grid burn; precedence water > buildings > road surfaces) |
-| Formulation | `v1/src/suitability/*` frozen 2026-09-04 design spec — verbatim constants |
-| Domain | Per-year Phase 6 `severity_score` valid pixels |
+## Candidate planting sites (2026)
 
-## 3. Method (frozen V1 formulation)
+Per scenario (v2_constrained PRIMARY; v1_parity also emitted):
+**sites = feasible ∧ S2 gates ∧ veg<0.30**, where the S2 gates are
+**priority ≥ pooled-p90 = 0.5926 ∧ cooling_need ≥ pooled-p75 = 0.7116** —
+pinned constants, DOCUMENTED OPERATIONAL SELECTION CHOICES (not validated
+ecological cutoffs). Zone-form: 8-connected, **MMU ≥ 2 ha**, **max-size cap
+57 ha** (patch-size p99 evidence; kills mega-patches — 26 of 286 candidates
+are oversized: flagged and excluded from shortlist ranking). Result:
+**286 candidate sites** (2026 v2). Geometry = exact pixel unions with a 15 m
+display-only simplify. Multi-year persistence machinery (h/K/MIN-veg/per-year
+columns) was removed — this is a 2026-only module.
 
-- **Need** = 0.40·severity_score + 0.25·(1−NDVI) + 0.20·NDBI + 0.15·LST
-- **Opportunity** = 0.30·landuse_eligibility + 0.25·built_up_inverse +
-  0.15·road_accessibility (piecewise: 50 m corridor → 500 m optimal → 2 km
-  decline) + 0.15·green_proximity (≤500 m cap) + 0.15·planting_headroom
-- **Suitability** = Need × Opportunity / 100 (gated product, 0–100)
-- Inputs min-max normalized per year at the p1/p99 percentiles (V1 spec).
-- Classes: Very Low <20, Low 20–40, Medium 40–60, High 60–80, Very High ≥80
-  (boundaries belong to the lower class). Priority zones: 8-connected
-  components ≥ 10 px of class ≥ 3 (High + Very High).
-- **Two scenarios**: `v1_parity` (no exclusions — V1-comparable) and
-  `v2_constrained` (water/buildings/road-surface pixels excluded, with
-  per-cause exclusion accounting). Exclusions in `v2_constrained` are applied
-  **after scoring**: suitability is computed once on the full valid domain and
-  the constrained scenario subsets those scores (normalization percentiles are
-  likewise computed on the full valid domain). Scenario differences are
-  therefore pure exclusion effects, not re-normalization effects — a
-  constrained-domain pixel carries exactly the score it would have in
-  `v1_parity`.
+## 0–100 planning-priority score (each indicator used exactly once)
 
-## 4. Verification Gate
+**score = 0.50·heat_need + 0.25·vegetation_deficit + 0.25·planting_opportunity**
+(0–100 pooled-normalized components; a former persistence term was dropped and
+the weights renormalized — documented). Class labels are rank bands
+(Shortlist/Candidate). Every artifact carries: **"planning-priority score
+(0–100), not a validated probability or proof of optimal cooling."**
 
-Independent re-derivation (`v2.phase7.verify`, log `_phase7_verify.log`):
-**30/30 PASS** — grid/CRS/dims; NoData == Phase 6 domain in both scenarios;
-constraint rasters exactly equal a fresh re-burn of the GeoJSONs (all 3
-layers); class/priority consistency; tables↔rasters reconciliation for every
-scenario-year; both scenarios present; manifest/record complete. Tests:
-**90/90 pass** (11 new suitability/constraint tests).
+## Per-site attributes
 
-## 5. Results — Priority Planting Area (class ≥ 3 = High+)
+usable_area_ha (== plantable_ha, the Phase 9 contract column), score + the
+three component scores, a rationale string ("score=… = 0.50·need(…) +
+0.25·veg_deficit(…) + 0.25·opportunity(…); 2026 conditions; top-100
+shortlist"), landuse composition + untagged_share, confidence status
+(low/mixed/identified by untagged share >0.5/>0.2) — **untagged OSM land is
+not confirmed available planting space** — constraint flags, and
+reference_trees at 400/1000/2500 = floor(usable × density), exact. Zero-usable
+sites are excluded. Shortlist confidence mix (2026): 85 low / 2 mixed /
+13 identified — the uncertainty flag is load-bearing and never reorders ranks.
 
-| Year | v1_parity class≥3 (ha) | zones | v2_constrained class≥3 (ha) | zones | Mean suitability (both) |
-|---|---|---|---|---|---|
-| 2022 | 915.3 | 114 | 619.9 | 75 | 27.3 / 26.8 |
-| 2023 | 901.0 | 112 | 574.4 | 91 | 27.2 / 26.1 |
-| 2024 | 109.1 | 19 | 88.3 | 17 | 28.8 / 28.9 |
-| 2025 | 213.8 | 26 | 136.8 | 17 | 26.6 / 26.3 |
-| 2026 | 44.9 | 11 | 43.2 | 11 | 27.2 / 27.3 |
+## Verification & provenance
 
-Priority **High** tier (Very High class) is **0 ha in all years** — the frozen
-gated product (Need×Opp/100 with these weights) rarely crosses 80; this is the
-verbatim V1 formula's honest outcome, not a defect. "Priority Medium" area
-equals the class≥3 area above.
-
-**Constraint accounting** (v2_constrained): ~355.5–355.7k px/year excluded
-(≈32.0k ha) — overwhelmingly buildings (~303k px) and water (~53k px), road
-surfaces minor (~0.5k px); domain shrinks from ~1.91M to ~1.554M px.
-
-## 6. Honest Notes and Caveats
-
-1. **Snapshots, not trends (critical):** every input is min-max normalized
-   *within each year* (p1/p99). Year-to-year differences in class≥3 area
-   (915 → 109 → 45 ha) therefore reflect each year's internal score
-   distribution, NOT a worsening/improving planting situation. Valid use:
-   within-year spatial ranking. Invalid use: comparing priority area across
-   years. This is the frozen V1 design ("snapshots, not trends").
-2. Outputs are **potential suitability — a relative decision-support
-   ranking**. They are not a statement of legal availability, land ownership,
-   plantability guarantee, or survival probability.
-3. Heat drivers are Phase 6 **relative** classes (per-year LST tertiles, W4
-   window) — not absolute UHI intensity; W4 products are not comparable to
-   V1's July-based maps.
-4. V1's B/C/D sensitivity scenarios were not ported (out of brief); only the
-   baseline (V1 Scenario A) composition is computed, in both V2 scenarios.
-5. **Unclassified/background land-use is weakly identified**: OSM-untagged
-   pixels (landuse class 0) inherit the frozen neutral eligibility value of 50
-   — neither clearly eligible nor excluded. Absence of an OSM tag is not
-   evidence of planting eligibility; suitability on background-class land
-   should be read with low confidence. (Inherited verbatim from the frozen V1
-   spec, where it is flagged CONDITIONAL/UNCERTAIN.)
-
-## 7. Output Files
-
-Under `v2/data/phase7/` (gitignored):
-
-- `v1_parity/`, `v2_constrained/` — each with `rasters/` (suitability score
-  float32 + class int8, per year), `zones/` (priority-zone rasters + GeoJSON),
-  `tables/` (class statistics, zone inventories, per-block tables, exclusion
-  accounting)
-- `constraints_rasters/` — burned water/buildings/road-surface masks +
-  attributed exclusion raster
-- `phase7_manifest.json`, `phase7_pipeline_record.json`
-- Logs: `v2/logs/_phase7_train.log`, `_phase7_verify.log`
-
-Runtime: 67.8 s total (constraint burn ~26 s once + ~2–13 s per scenario-year).
-
-## 8. Validation Summary
-
-| Gate | Result |
-|---|---|
-| Verification gate (`v2.phase7.verify`) | **30/30 PASS** |
-| Full test suite | **90/90 pass** |
-| Downstream readiness | Phase 8 inputs complete: priority zones, suitability scores, exclusion accounting (constraint-aware tree counts can differ by scenario) |
-| Phase 8 status | **NOT started — awaiting user review of Phase 7 results** |
+Phase 7 gate **8/8 PASS** (pooled references recompute, fixed-threshold class
+recompute, class shares, exclusion partition, artifacts). Lineage: Phase 3
+products + Phase 2 constraint layers (hashed in the manifest). Logs
+`_phase7_build.log` / `_phase7_verify.log`.

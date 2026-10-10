@@ -32,6 +32,21 @@ export const fetchBoundary = async () => {
   return response.data;
 };
 
+export const fetchOsmReferenceBoundary = async () => {
+  const response = await axios.get(`${API_BASE_URL}/boundary/osm_reference`);
+  return response.data;
+};
+
+export const fetchClassShares = async (year: number, scenario: string) => {
+  const response = await axios.get(`${API_BASE_URL}/phase7/class_shares/${year}/${scenario}`);
+  return response.data;
+};
+
+export const fetchExclusions = async (year: number, scenario: string) => {
+  const response = await axios.get(`${API_BASE_URL}/phase7/exclusions/${year}/${scenario}`);
+  return response.data;
+};
+
 export const getTileUrl = (phase: string, layer: string, year: number) => {
   return `${API_BASE_URL}/tiles/${phase}/${layer}/${year}/{z}/{x}/{y}.png`;
 };

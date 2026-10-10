@@ -26,6 +26,9 @@ def get_raster_path(phase: str, layer: str, year: int) -> str:
         return os.path.join(DATA_DIR, "phase3", str(year), f"{layer}_30m.tif")
     elif phase == "phase6":
         return os.path.join(DATA_DIR, "phase6", "rasters", f"{layer}_{year}.tif")
+    elif phase == "phase7":
+        # layer carries the scenario, e.g. "priority_class_v2_constrained"
+        return os.path.join(DATA_DIR, "phase7", layer.rsplit("_", 2)[-2], "rasters", f"{layer}_{year}.tif")
     raise HTTPException(status_code=400, detail="Invalid phase")
 
 @app.get("/api/metadata")
@@ -37,11 +40,40 @@ def get_metadata():
 
 @app.get("/api/phase7/zones/{year}/{scenario}")
 def get_priority_zones(year: int, scenario: str):
-    path = os.path.join(DATA_DIR, "phase7", scenario, "zones", f"priority_zones_{scenario}_{year}.geojson")
+    """Per-year planting-land patches (Phase 8 geojson; Phase 7 v3 scores the
+    full area, zones are planting-land patches, not heat zones)."""
+    path = os.path.join(DATA_DIR, "phase8", scenario, "vectors", f"recommended_plantations_{scenario}_{year}.geojson")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Data not found")
     with open(path, "r") as f:
         return json.load(f)
+
+@app.get("/api/phase8/capacity/{year}/{scenario}")
+def get_capacity(year: int, scenario: str):
+    """Theoretical eligible capacity (transparency only - not a recommendation)."""
+    path = os.path.join(DATA_DIR, "phase8", scenario, "tables", f"theoretical_capacity_{scenario}_{year}.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Data not found")
+    df = pd.read_csv(path)
+    return df.to_dict(orient="records")
+
+@app.get("/api/phase7/class_shares/{year}/{scenario}")
+def get_class_shares(year: int, scenario: str):
+    """Full-area priority class shares (fixed pooled thresholds)."""
+    path = os.path.join(DATA_DIR, "phase7", scenario, "tables", f"class_shares_{scenario}_{year}.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Data not found")
+    df = pd.read_csv(path)
+    return df.to_dict(orient="records")
+
+@app.get("/api/phase7/exclusions/{year}/{scenario}")
+def get_exclusions(year: int, scenario: str):
+    """Per-reason exclusion accounting (ha), partitioning the valid domain."""
+    path = os.path.join(DATA_DIR, "phase7", scenario, "tables", f"exclusion_accounting_{scenario}_{year}.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Data not found")
+    df = pd.read_csv(path)
+    return df.to_dict(orient="records")
 
 @app.get("/api/phase8/summary/{year}/{scenario}")
 def get_tree_requirement_summary(year: int, scenario: str):
@@ -61,19 +93,39 @@ def get_tree_requirement_zones(year: int, scenario: str):
 
 @app.get("/api/boundary")
 def get_study_area_boundary():
+    """Primary dashboard outline: the data-extent boundary (vectorized envelope
+    of all pixels valid in >=1 of 5 W4 years). This matches the rasters; the
+    GEE exports were clipped to FAO/GAUL/2015 Delhi, not to the OSM polygon."""
+    path = os.path.join(DATA_DIR, "gis", "study_area", "study_area_data_extent.geojson")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Boundary not found")
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/boundary/osm_reference")
+def get_osm_reference_boundary():
+    """Reference boundary: Delhi NCT per OSM relation 1942586. Differs from the
+    data extent along the NCT fringe (~7,850 ha outside / ~5,230 ha inside).
+    Served as an optional, unchecked reference layer only."""
     path = os.path.join(DATA_DIR, "gis", "study_area", "study_area.geojson")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Boundary not found")
     with open(path, "r") as f:
         return json.load(f)
 
-# Hardcoded scientific rendering parameters
+# Hardcoded scientific rendering parameters.
+# Reference ranges (documented, fixed across years):
+#  - LST: pooled p0.1-p99.9 of valid 2022-2026 W4 Landsat-9 LST = 31.4-58.0 C.
+#  - severity: categorical class raster {0=Low,1=Medium,2=High} (nodata 255);
+#    rendered with an EXACT discrete colormap, no rescale.
 LAYER_CONFIGS = {
-    "lst": {"rescale": ((30, 55),), "colormap_name": "inferno"},
-    "ndvi": {"rescale": ((-1, 1),), "colormap_name": "rdylgn"},
+    "lst": {"rescale": ((31.4, 58.0),), "colormap_name": "inferno"},
+    "ndvi": {"rescale": ((-0.4, 0.9),), "colormap_name": "rdylgn"},  # actual 2022-2026 W4 range -0.37..0.90
     "ndbi": {"rescale": ((-0.5, 0.5),), "colormap_name": "rdbu_r"},
     "vegetation_cover": {"rescale": ((0, 1),), "colormap_name": "greens"},
-    "severity_score": {"rescale": ((1, 3),), "colormap_name": "ylorrd"},
+    "severity": {"colormap_dict": {0: (255, 255, 204, 255), 1: (253, 141, 60, 255), 2: (128, 0, 38, 255)}},
+    "severity_score": {"rescale": ((0, 2),), "colormap_name": "ylorrd"},
     "confidence": {"rescale": ((0, 1),), "colormap_name": "blues"},
     "probability": {"rescale": ((0, 1),), "colormap_name": "purples"}
 }
@@ -105,7 +157,11 @@ def get_tile(phase: str, layer: str, year: int, z: int, x: int, y: int):
             if config:
                 if "rescale" in config:
                     img.rescale(in_range=config["rescale"])
-                if "colormap_name" in config:
+                if "colormap_dict" in config:
+                    # Exact discrete class colors; raster values must pass through
+                    # unrescaled so class ids map directly to legend colors.
+                    render_kwargs["colormap"] = config["colormap_dict"]
+                elif "colormap_name" in config:
                     cm = cmap.get(config["colormap_name"])
                     render_kwargs["colormap"] = cm
                     

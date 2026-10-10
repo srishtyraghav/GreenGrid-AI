@@ -1,10 +1,35 @@
-"""V2 Phase 7 build — plantation suitability for both scenarios, all years.
+"""V2 Phase 7 build v3 — plantation suitability over the FULL valid study area.
 
-Reuses the Phase 4 code path (``v2.phase4.assemble_features`` loaders) for
-the environmental rasters, the frozen V1 suitability formulation
-(``v2.phase7.suitability``), and the V2 constraint stack
-(``v2.phase7.constraints``). Consumes Phase 6 severity products (V2 Phase 5
-RF primary lineage, recorded from the Phase 6 manifest).
+Three explicitly separate components (a hot pixel != plantable; a plantable
+pixel != high priority):
+
+  1. COOLING NEED (0-1): LST-led, INDEPENDENT of Phase 6. Fixed POOLED
+     references (p1/p99 of the pooled 2022-2026 W4 valid pixels per
+     variable) — never per-year min-max. Formula (documented):
+       cooling_need = 0.55*n_pool(LST) + 0.25*n_pool(1-NDVI) + 0.20*n_pool(NDBI)
+     (V1 need backbone with the Phase-6-severity term — itself LST-trained —
+     replaced by direct pooled LST; V1's non-severity weights kept and
+     renormalized.)
+  2. PLANTING FEASIBILITY: HARD mask, independent of any score:
+     eligible landuse (frozen rule: excl. industrial 5 / retail 7; nodata 255
+     neutral-eligible) AND NOT water AND NOT buildings AND NOT road surfaces
+     (Phase 2/3 constraint rasters). vegetation_cover < 0.30 is a DOCUMENTED
+     planting-space criterion used by Phase 8 zone formation (and the
+     scoring's planting-headroom term covers vegetation via NDVI) — it is NOT
+     part of this feasibility mask. Exclusion accounting per reason per year.
+  3. SUITABILITY (0-1) over the full valid domain: V1 opportunity weights
+     VERBATIM rebased to 0-1 (0.30*landuse_eligibility + 0.25*(1-n(NDBI)) +
+     0.15*road_band + 0.15*green_proximity + 0.15*(1-n(NDVI))), multiplicatively
+     gated by cooling need (V1's gated product, rebased):
+       suitability = cooling_need * opportunity.
+  4. PRIORITY (separate from suitability): priority = 0.5*cooling_need +
+     0.5*suitability, computed ONLY over feasible land (excluded pixels carry
+     no priority). Classes by FIXED pooled terciles of the priority score
+     over feasible land (pooled across all 5 years): Low < t1 <= Medium <
+     t2 <= High. Medium stays eligible everywhere; no High-only gate exists.
+     Because every reference is fixed, class maps are directly comparable
+     across years (relative-to-pooled-reference — not absolute inter-annual
+     heat claims).
 
 Usage:
     PYTHONPATH=v2/src .venv/Scripts/python.exe -m v2.phase7.build \
@@ -30,23 +55,25 @@ from ..common import (
     PROJECT_ROOT,
     YEARS,
     Grid,
-    compute_block_raster,
     dump_json,
     sha256_file,
 )
 from ..phase4.assemble_features import load_phase3_year, load_static
 from . import suitability as S
-from .constraints import CONSTRAINT_FILES, PRECEDENCE, build_constraint_stack
+from .constraints import CONSTRAINT_FILES, build_constraint_stack
+from .zones_stable import build_stable_zones
 
-PHASE6_DIR_DEFAULT = PROJECT_ROOT / "data" / "phase6"
 PHASE3_ROOT_DEFAULT = PROJECT_ROOT / "data" / "phase3"
 CONSTRAINTS_DIR_DEFAULT = PROJECT_ROOT / "data" / "phase2" / "constraints"
 OUT_DEFAULT = PROJECT_ROOT / "data" / "phase7"
 
 SCENARIOS = ("v1_parity", "v2_constrained")
+DISCOURAGED_LU_CODES = (5, 7)          # frozen V1 eligibility rule
+POOL_SAMPLE_PER_YEAR = 200_000
 
-# per-year Phase 6 inputs consumed (V2 layout; severity_score owns the domain)
-P6_REQUIRED = ("severity_score", "severity", "confidence")
+LU_NAMES = {0: "untagged", 1: "park", 2: "forest", 3: "grass", 4: "commercial",
+            5: "industrial", 6: "residential", 7: "retail", 8: "farmland",
+            255: "nodata"}
 
 
 def log(msg: str) -> None:
@@ -55,401 +82,356 @@ def log(msg: str) -> None:
 
 def read_band(path: Path):
     with rasterio.open(path) as ds:
-        arr = ds.read(1).astype(np.float64)
-        nodata = ds.profile.get("nodata")
-        nodata = float(nodata) if nodata is not None else np.nan
+        arr = ds.read(1, masked=True).astype(np.float64).filled(np.nan)
+        nodata = ds.nodata
     return arr, nodata
 
 
-def finite_mask(arr, nodata):
-    if np.isnan(nodata):
-        return np.isfinite(arr)
-    return np.isfinite(arr) & (arr != nodata)
+def write_full(arr, path, griddef, dtype, nodata, descr):
+    import rasterio as rio
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prof = griddef.profile(count=1, dtype=np.dtype(dtype).name, nodata=nodata)
+    with rio.open(path, "w", **prof) as dst:
+        dst.write(arr.astype(dtype), 1)
+        dst.set_band_description(1, descr)
+    return {"path": str(path), "bytes": path.stat().st_size}
 
 
-def preflight(years, phase6_dir, phase3_root, constraints_dir, grid_file):
+def eligible_lu_grid(lu_codes: np.ndarray) -> np.ndarray:
+    eligible = np.ones(256, dtype=bool)
+    for c in DISCOURAGED_LU_CODES:
+        eligible[int(c)] = False
+    return eligible[lu_codes.astype(np.int64)]
+
+
+def preflight(years, phase3_root, constraints_dir, grid_file):
     for y in years:
-        for name in P6_REQUIRED:
-            p = phase6_dir / "rasters" / f"{name}_{y}.tif"
-            if not p.exists():
-                raise FileNotFoundError(f"missing phase6 input: {p}")
         if not (phase3_root / str(y)).is_dir():
             raise FileNotFoundError(f"missing phase3 year: {y}")
+    for name in ("landuse_raster_30m.tif", "roads_distance_30m.tif",
+                 "vegetation_distance_30m.tif"):
+        if not (phase3_root / "static" / name).exists():
+            raise FileNotFoundError(f"missing phase3 static: {name}")
     for f in CONSTRAINT_FILES.values():
         if not (constraints_dir / f).exists():
             raise FileNotFoundError(f"missing constraint layer: {f}")
-    if not (phase6_dir / "phase6_manifest.json").exists():
-        raise FileNotFoundError("missing phase6 manifest")
-    if not Path(grid_file).exists():
-        raise FileNotFoundError(f"missing grid file: {grid_file}")
     grid = Grid.from_file(Path(grid_file))
     assert (grid.height, grid.width) == (1768, 1874), "authoritative grid mismatch"
 
 
-# ---------------------------------------------------------------------------
-# Raster helpers
-# ---------------------------------------------------------------------------
-def write_score(flat, path, griddef, shape, rows, cols):
-    values = flat.astype(np.float32)
-    assert np.isfinite(values).all() and values.min() >= 0.0 and values.max() <= 100.0
-    raster = np.full(shape, S.SCORE_NODATA, dtype=np.float32)
-    raster[rows, cols] = values
-    path.parent.mkdir(parents=True, exist_ok=True)
-    prof = griddef.profile(count=1, dtype="float32", nodata=S.SCORE_NODATA)
-    with rasterio.open(path, "w", **prof) as dst:
-        dst.write(raster, 1)
-        dst.set_band_description(1, path.stem)
-    return {"path": str(path), "bytes": path.stat().st_size}
+def load_year_arrays(phase3_root, year):
+    d = load_phase3_year(phase3_root, year)
+    out = {k: d[k] for k in ("lst_C", "ndvi", "ndbi", "vegetation_cover")}
+    out["domain"] = (np.isfinite(out["lst_C"]) & np.isfinite(out["ndvi"])
+                     & np.isfinite(out["ndbi"]) & np.isfinite(out["vegetation_cover"]))
+    return out
 
 
-def write_class(flat_cls, path, griddef, shape, rows, cols, dtype, nodata):
-    raster = np.full(shape, nodata, dtype=dtype)
-    raster[rows, cols] = flat_cls.astype(dtype)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    prof = griddef.profile(count=1, dtype=dtype.name if hasattr(dtype, "name") else str(dtype),
-                           nodata=nodata)
-    prof["dtype"] = np.dtype(dtype).name
-    with rasterio.open(path, "w", **prof) as dst:
-        dst.write(raster, 1)
-        dst.set_band_description(1, path.stem)
-    return {"path": str(path), "bytes": path.stat().st_size}
+def compute_pooled_references(years, phase3_root, seed=42):
+    """Fixed p1/p99 per variable over the POOLED 2022-2026 valid pixels."""
+    rng = np.random.default_rng(seed)
+    samples = {k: [] for k in ("lst", "ndvi", "ndbi", "veg")}
+    for y in years:
+        arr = load_year_arrays(phase3_root, y)
+        dom = arr["domain"]
+        for k, src in (("lst", "lst_C"), ("ndvi", "ndvi"),
+                       ("ndbi", "ndbi"), ("veg", "vegetation_cover")):
+            vals = arr[src][dom]
+            take = min(POOL_SAMPLE_PER_YEAR, vals.size)
+            samples[k].append(rng.choice(vals, size=take, replace=False))
+        del arr
+    refs = {}
+    for k in samples:
+        pooled = np.concatenate(samples[k])
+        p1, p99 = S.pooled_p1_p99(pooled)
+        refs[k] = {"p1": p1, "p99": p99, "n_samples": int(pooled.size)}
+    refs["one_minus_ndvi"] = dict(refs["ndvi"])
+    log(f"pooled references: {json.dumps({k: (round(v['p1'],4), round(v['p99'],4)) for k,v in refs.items()})}")
+    return refs
 
 
-# ---------------------------------------------------------------------------
-# Year pipeline
-# ---------------------------------------------------------------------------
-def run_year(year, ctx, out_root):
-    grid: Grid = ctx["grid"]
-    shape = grid.shape
-    t0 = time.perf_counter()
-    log(f"=== {year} ===")
-
-    sev, sev_nd = read_band(ctx["phase6_dir"] / "rasters" / f"severity_score_{year}.tif")
-    domain = finite_mask(sev, sev_nd)
-    products = load_phase3_year(ctx["phase3_root"], year)
-    yearly = {"severity_score": sev,
-              "ndvi": products["ndvi"], "ndbi": products["ndbi"],
-              "lst": products["lst_C"], "vegetation_cover": products["vegetation_cover"]}
-    del products
-    for name, arr in yearly.items():
-        domain &= np.isfinite(arr)
-    if not domain.any():
-        raise AssertionError(f"{year}: empty analysis domain")
-    rows, cols = np.nonzero(domain)
-    flat = {k: v[domain] for k, v in yearly.items()}
-    del yearly
-    lu = ctx["static"]["landuse_class"]          # float64; NaN == nodata(255)
-    assert np.isfinite(ctx["static"]["dist_road_m"][domain]).all() and \
-        np.isfinite(ctx["static"]["dist_vegetation_m"][domain]).all(), \
-        "static distance rasters contain non-finite domain cells"
-    static_flat = {
-        "landuse": np.where(np.isfinite(lu), lu, 255.0)[domain].astype(np.int64),
-        "dist_road_m": ctx["static"]["dist_road_m"][domain],
-        "dist_vegetation_m": ctx["static"]["dist_vegetation_m"][domain],
-    }
-
-    # per-year p1/p99 normalization (frozen V1 rule) + bounds record
-    norm = {}
-    bounds_rows = []
-    for name in ("severity_score", "ndvi", "ndbi", "lst", "vegetation_cover"):
-        scaled, bounds = S.robust_minmax(flat[name])
-        norm[name] = scaled
-        bounds_rows.append({"year": year, "variable": name, **bounds})
-    scaled, bounds = S.robust_minmax(1.0 - flat["ndvi"])
-    norm["one_minus_ndvi"] = scaled
-    bounds_rows.append({"year": year, "variable": "one_minus_ndvi", **bounds})
-
-    need = S.compute_heat_need(norm)
-    opp = S.compute_opportunity(norm, static_flat)
-    suitability = S.gated_product(need, opp["opportunity"])
-    cls_flat = S.classify(suitability.astype(np.float32).astype(np.float64))
-    tiers_flat = S.priority_tier(cls_flat)
-
-    year_info = {"year": year, "domain_px": int(domain.sum()),
-                 "normalization_bounds": bounds_rows, "scenarios": {}}
-    excluded = ctx["constraints"]["attributed"] > 0
-
-    for scenario in SCENARIOS:
-        ts = time.perf_counter()
-        sdir = out_root / scenario
-        rasters_dir, zones_dir, tables_dir = sdir / "rasters", sdir / "zones", sdir / "tables"
-        for d in (rasters_dir, zones_dir, tables_dir):
-            d.mkdir(parents=True, exist_ok=True)
-        tag = scenario
-        if scenario == "v2_constrained":
-            sdomain = domain & ~excluded
-        else:
-            sdomain = domain
-        srows, scols = np.nonzero(sdomain)
-        sidx = sdomain[domain]              # index of scenario cells in domain flats
-        n_s = int(sdomain.sum())
-
-        out = {}
-        out["suitability"] = write_score(suitability[sidx], rasters_dir / f"suitability_{tag}_{year}.tif", grid, shape, srows, scols)
-        out["heat_need"] = write_score(need[sidx], rasters_dir / f"heat_need_{tag}_{year}.tif", grid, shape, srows, scols)
-        out["opportunity"] = write_score(opp["opportunity"][sidx], rasters_dir / f"plantation_opportunity_{tag}_{year}.tif", grid, shape, srows, scols)
-        s_cls = cls_flat[sidx]
-        out["suitability_class"] = write_class(s_cls, rasters_dir / f"suitability_class_{tag}_{year}.tif", grid, shape, srows, scols, np.int16, S.CLASS_NODATA)
-        out["priority"] = write_class(tiers_flat[sidx], rasters_dir / f"priority_{tag}_{year}.tif", grid, shape, srows, scols, np.uint8, 255)
-        # exclusion mask: full-grid classification (V1 encoding: 1=excluded, 0=domain)
-        excl_raster = np.where(sdomain, 0, 1).astype(np.uint8)
-        excl_path = rasters_dir / f"exclusion_mask_{tag}_{year}.tif"
-        excl_path.parent.mkdir(parents=True, exist_ok=True)
-        prof = grid.profile(count=1, dtype="uint8", nodata=255)
-        with rasterio.open(excl_path, "w", **prof) as dst:
-            dst.write(excl_raster, 1)
-            dst.set_band_description(1, "1=excluded, 0=analysis domain")
-        out["exclusion_mask"] = {"path": str(excl_path), "bytes": excl_path.stat().st_size,
-                                 "excluded_px": int((excl_raster == 1).sum()),
-                                 "analysis_domain_px": int((excl_raster == 0).sum())}
-
-        # ---- priority zones (class >= 3, V1 rule) --------------------------
-        cls_grid = np.full(shape, S.CLASS_NODATA, dtype=np.int16)
-        cls_grid[srows, scols] = s_cls
-        binary = (cls_grid >= S.ZONE_MIN_CLASS) & sdomain
-        labelled, n_zones = S.label_zones(binary)
-        polygons = S.polygons_per_zone(labelled, grid.transform) if n_zones else {}
-        validation = S.validate_geometries(polygons)
-        zids = labelled[srows, scols]
-        zone_rows = []
-        for zid in sorted(int(i) for i in np.unique(zids[zids > 0])):
-            sel = zids == zid
-            n_px = int(sel.sum())
-            geom = polygons[zid]
-            vals, counts = np.unique(s_cls[sel], return_counts=True)
-            zone_rows.append({
-                "zone_id": zid, "year": year, "scenario": scenario,
-                "pixel_count": n_px,
-                "area_ha": round(n_px * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-                "centroid_lon": round(geom.centroid.x, 7),
-                "centroid_lat": round(geom.centroid.y, 7),
-                "mean_suitability": round(float(suitability[sidx][sel].mean()), 4),
-                "mean_class": round(float(s_cls[sel].mean()), 3),
-                "dominant_class": int(vals[np.argmax(counts)]),
-                "mean_heat_need": round(float(need[sidx][sel].mean()), 4),
-                "mean_opportunity": round(float(opp["opportunity"][sidx][sel].mean()), 4),
-            })
-        zframe = pd.DataFrame(zone_rows)
-        zframe.to_csv(tables_dir / f"priority_zone_statistics_{tag}_{year}.csv", index=False)
-        ranking = zframe.sort_values(["mean_suitability", "area_ha"],
-                                     ascending=[False, False]).reset_index(drop=True)
-        ranking.insert(0, "rank", np.arange(1, len(ranking) + 1))
-        ranking.to_csv(tables_dir / f"priority_ranking_{tag}_{year}.csv", index=False)
-        # zone ids raster: full grid, 0 = not a zone, -1 never occurs inside grid
-        zpath = rasters_dir / f"priority_zone_ids_{tag}_{year}.tif"
-        prof = grid.profile(count=1, dtype="int32", nodata=-1)
-        with rasterio.open(zpath, "w", **prof) as dst:
-            dst.write(labelled.astype(np.int32), 1)
-            dst.set_band_description(1, "priority zone ids (0 = not a zone)")
-        import geopandas as gpd
-        if not zframe.empty:
-            gdf = gpd.GeoDataFrame(
-                zframe, geometry=[polygons[int(z)] for z in zframe["zone_id"]],
-                crs="EPSG:4326")
-        else:
-            gdf = gpd.GeoDataFrame(zframe, geometry=gpd.GeoSeries(dtype="geometry"),
-                                   crs="EPSG:4326")
-        gdf.to_file(zones_dir / f"priority_zones_{tag}_{year}.geojson", driver="GeoJSON")
-
-        # ---- tables ---------------------------------------------------------
-        n_dom = n_s
-        tier_rows = []
-        for tier, label in ((3, "High"), (2, "Medium"), (1, "Low")):
-            n = int((tiers_flat[sidx] == tier).sum())
-            tier_rows.append({"year": year, "scenario": scenario,
-                              "priority": label, "pixel_count": n,
-                              "area_ha": round(n * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-                              "pct_of_domain": round(100.0 * n / n_dom, 4)})
-        hist = np.bincount(s_cls, minlength=5)
-        for c in range(5):
-            tier_rows.append({"year": year, "scenario": scenario,
-                              "priority": f"class_{c}_{S.CLASS_LABELS[c].replace(' ', '_').lower()}",
-                              "pixel_count": int(hist[c]),
-                              "area_ha": round(int(hist[c]) * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-                              "pct_of_domain": round(100.0 * hist[c] / n_dom, 4)})
-        pd.DataFrame(tier_rows).to_csv(
-            tables_dir / f"priority_tiers_{tag}_{year}.csv", index=False)
-
-        blk = ctx["block_raster"]
-        blk_rows = []
-        for bid in range(25):
-            bmask = (blk == bid) & sdomain
-            n_b = int(bmask.sum())
-            if n_b == 0:
-                continue
-            bidx = sdomain[domain] & (blk[domain] == bid)
-            b_cls = cls_flat[bidx]
-            blk_rows.append({
-                "year": year, "scenario": scenario, "spatial_block_id": bid,
-                "domain_px": n_b,
-                "mean_suitability": round(float(suitability[bidx].mean()), 4),
-                "mean_heat_need": round(float(need[bidx].mean()), 4),
-                "mean_opportunity": round(float(opp["opportunity"][bidx].mean()), 4),
-                "class_ge3_px": int((b_cls >= S.ZONE_MIN_CLASS).sum()),
-                "priority_high_px": int((b_cls == 4).sum()),
-                "priority_medium_px": int((b_cls == 3).sum()),
-                "priority_low_px": int((b_cls == 2).sum()),
-                "zone_ha": round(float(sum(
-                    r["area_ha"] for r in zone_rows
-                    if bid in np.unique(blk[labelled == r["zone_id"]]))), 3),
-            })
-        pd.DataFrame(blk_rows).to_csv(
-            tables_dir / f"block_suitability_{tag}_{year}.csv", index=False)
-
-        excl_rows = []
-        if scenario == "v2_constrained":
-            in_dom_excl = excluded & domain
-            total = int(in_dom_excl.sum())
-            for code, name in ((1, "water"), (2, "buildings"), (3, "road_surfaces")):
-                raw = ctx["constraints"]["masks"][name]
-                excl_rows.append({
-                    "year": year, "scenario": scenario, "layer": name,
-                    "burned_px_full_grid": int(raw.sum()),
-                    "excluded_domain_px": int((raw & domain).sum()),
-                    "attributed_px": int(((ctx["constraints"]["attributed"] == code) & domain).sum()),
-                    "area_ha": round(int((raw & domain).sum()) * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-                })
-            excl_rows.append({"year": year, "scenario": scenario, "layer": "UNION",
-                              "burned_px_full_grid": total,
-                              "excluded_domain_px": total,
-                              "attributed_px": total,
-                              "area_ha": round(total * S.PX_AREA_M2 / S.M2_PER_HA, 3)})
-            pd.DataFrame(excl_rows).to_csv(
-                tables_dir / f"exclusion_accounting_{tag}_{year}.csv", index=False)
-
-        hvh = int(((s_cls >= S.ZONE_MIN_CLASS)).sum())
-        year_info["scenarios"][scenario] = {
-            "domain_px": n_dom,
-            "mean_need": round(float(need[sidx].mean()), 4),
-            "mean_opportunity": round(float(opp["opportunity"][sidx].mean()), 4),
-            "mean_suitability": round(float(suitability[sidx].mean()), 4),
-            "class_ge3_px": hvh,
-            "class_ge3_ha": round(hvh * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-            "priority_high_ha": round(int((tiers_flat[sidx] == 3).sum()) * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-            "priority_medium_ha": round(int((tiers_flat[sidx] == 2).sum()) * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-            "priority_low_ha": round(int((tiers_flat[sidx] == 1).sum()) * S.PX_AREA_M2 / S.M2_PER_HA, 3),
-            "n_zones": n_zones,
-            "zone_geometry_valid": bool(validation["all_valid"]),
-            "zone_pixel_counts_match": bool(
-                (int(zframe["pixel_count"].sum()) if n_zones else 0) == int((labelled > 0).sum())),
-            "exclusion_rows": excl_rows if scenario == "v2_constrained" else [],
-            "wall_s": time.perf_counter() - ts,
-            "outputs": out,
-        }
-        log(f"{year} {scenario}: domain={n_dom:,} zones={n_zones} "
-            f"High+VH={hvh:,}px wall={year_info['scenarios'][scenario]['wall_s']:.1f}s")
-
-    year_info["wall_s"] = time.perf_counter() - t0
-    return year_info
+def score_year(year, refs, ctx):
+    """Full-grid 0-1 scores for one year (all components)."""
+    arr = load_year_arrays(ctx["phase3_root"], year)
+    dom = arr["domain"]
+    n_lst = S.pooled_normalize(arr["lst_C"], refs["lst"]["p1"], refs["lst"]["p99"])
+    n_ndvi = S.pooled_normalize(arr["ndvi"], refs["ndvi"]["p1"], refs["ndvi"]["p99"])
+    n_ndbi = S.pooled_normalize(arr["ndbi"], refs["ndbi"]["p1"], refs["ndbi"]["p99"])
+    n_1mndvi = S.pooled_normalize(1.0 - arr["ndvi"],
+                                  refs["one_minus_ndvi"]["p1"],
+                                  refs["one_minus_ndvi"]["p99"])
+    need = S.cooling_need(n_lst, n_1mndvi, n_ndbi)
+    lu = ctx["lu_codes"]
+    static = {"landuse": lu, "dist_road_m": ctx["dist_road_m"],
+              "dist_vegetation_m": ctx["dist_vegetation_m"]}
+    opp = S.opportunity_component_01(
+        {"ndvi": n_ndvi, "ndbi": n_ndbi}, static)
+    suit = S.suitability_product(need, opp)
+    feasible = ctx["eligible_lu"] & ~ctx["constraint"] & dom
+    priority = np.full(dom.shape, np.nan)
+    priority[feasible] = (S.PRIORITY_WEIGHTS["cooling_need"] * need[feasible]
+                          + S.PRIORITY_WEIGHTS["suitability"] * suit[feasible])
+    return {"year": year, "domain": dom, "feasible": feasible,
+            "need": need, "opportunity": opp, "suitability": suit,
+            "priority": priority, "raw": arr}
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--phase6-dir", default=str(PHASE6_DIR_DEFAULT))
     ap.add_argument("--phase3-root", default=str(PHASE3_ROOT_DEFAULT))
     ap.add_argument("--constraints-dir", default=str(CONSTRAINTS_DIR_DEFAULT))
     ap.add_argument("--out", default=str(OUT_DEFAULT))
     ap.add_argument("--years", default=",".join(str(y) for y in YEARS))
     ap.add_argument("--grid-file", default=str(GRID_FILE_DEFAULT))
-    ap.add_argument("--skip-constraint-burn", action="store_true",
-                    help="reuse existing v2/data/phase7/constraints_rasters")
+    ap.add_argument("--skip-constraint-burn", action="store_true")
     args = ap.parse_args(argv)
 
     years = tuple(int(y) for y in args.years.split(","))
-    phase6_dir = Path(args.phase6_dir)
     phase3_root = Path(args.phase3_root)
     constraints_dir = Path(args.constraints_dir)
     out_root = Path(args.out)
     t_start = time.perf_counter()
 
-    preflight(years, phase6_dir, phase3_root, constraints_dir, Path(args.grid_file))
+    preflight(years, phase3_root, constraints_dir, Path(args.grid_file))
     grid = Grid.from_file(Path(args.grid_file))
-    log(f"grid {grid.width}x{grid.height}; years={years}")
+    log(f"grid {grid.width}x{grid.height}; years={years}; v3 full-area methodology")
 
-    t = time.perf_counter()
     burn_dir = out_root / "constraints_rasters"
     if args.skip_constraint_burn and (burn_dir / "constraint_attributed_30m.tif").exists():
-        import rasterio as _rio
         masks = {}
         for name in CONSTRAINT_FILES:
-            with _rio.open(burn_dir / f"constraint_{name}_30m.tif") as ds:
+            with rasterio.open(burn_dir / f"constraint_{name}_30m.tif") as ds:
                 masks[name] = ds.read(1).astype(bool)
-        with _rio.open(burn_dir / "constraint_attributed_30m.tif") as ds:
+        with rasterio.open(burn_dir / "constraint_attributed_30m.tif") as ds:
             attributed = ds.read(1)
-        constraints = {"masks": masks, "attributed": attributed,
-                       "counts_full_grid": {n: int(m.sum()) for n, m in masks.items()},
-                       "counts_union_full_grid": int((attributed > 0).sum())}
-        log(f"constraint stack reloaded from {burn_dir}")
+        constraints = {"masks": masks, "attributed": attributed}
+        log("constraint stack reloaded")
     else:
         constraints = build_constraint_stack(constraints_dir, grid, burn_dir)
-    log(f"constraint stack ready in {time.perf_counter() - t:.1f}s: "
-        f"{constraints['counts_full_grid']} union={constraints['counts_union_full_grid']:,}")
 
+    static = load_static(phase3_root)
+    lu_codes = np.where(np.isfinite(static["landuse_class"]),
+                        static["landuse_class"], 255.0).astype(np.int64)
     ctx = {
-        "grid": grid, "phase6_dir": phase6_dir, "phase3_root": phase3_root,
-        "static": load_static(phase3_root),
-        "block_raster": compute_block_raster(grid.height, grid.width),
-        "constraints": constraints,
+        "phase3_root": phase3_root, "grid": grid,
+        "lu_codes": lu_codes,
+        "eligible_lu": eligible_lu_grid(lu_codes),
+        "dist_road_m": static["dist_road_m"],
+        "dist_vegetation_m": static["dist_vegetation_m"],
+        "constraint": constraints["attributed"] > 0,
+        "constraint_masks": constraints["masks"],
     }
 
-    year_infos = [run_year(y, ctx, out_root) for y in years]
+    refs = compute_pooled_references(years, phase3_root)
+    scored = {y: score_year(y, refs, ctx) for y in years}
 
-    p6_manifest = json.loads((phase6_dir / "phase6_manifest.json").read_text())
-    summary = {str(yi["year"]): {sc: {k: v for k, v in yi["scenarios"][sc].items()
-                                      if k not in ("outputs", "exclusion_rows")}
-                                 for sc in SCENARIOS} for yi in year_infos}
+    # FIXED priority thresholds: pooled terciles of the priority score over
+    # feasible land, pooled across ALL years.
+    rng = np.random.default_rng(42)
+    pr_samples = []
+    for y in years:
+        pv = scored[y]["priority"][scored[y]["feasible"]]
+        pr_samples.append(rng.choice(pv, size=min(400_000, pv.size), replace=False))
+    t1, t2 = (float(v) for v in np.quantile(np.concatenate(pr_samples), [1 / 3, 2 / 3]))
+    sel_p90 = float(np.quantile(np.concatenate(pr_samples), 0.90))
+    nd_samples = []
+    for y in years:
+        nv = scored[y]["need"][scored[y]["feasible"]]
+        nd_samples.append(rng.choice(nv, size=min(400_000, nv.size), replace=False))
+    nd_p75 = float(np.quantile(np.concatenate(nd_samples), 0.75))
+    log(f"fixed priority bands (pooled terciles over feasible land): t1={t1:.4f} t2={t2:.4f}; "
+        f"selection constants: priority_p90={sel_p90:.4f} need_p75={nd_p75:.4f}")
+
+    per_year = {}
+    input_hashes = {}
+    for y in years:
+        sc = scored[y]
+        dom, feas = sc["domain"], sc["feasible"]
+        cls = S.classify_priority(sc["priority"], t1, t2)
+        cls = S.classify_priority(sc["priority"].astype(np.float32).astype(np.float64), t1, t2)
+        per_year[y] = {"domain_px": int(dom.sum()), "feasible_px": int(feas.sum()),
+                       "class_px": {int(c): int((cls[feas] == c).sum()) for c in (0, 1, 2)}}
+        for scenario in SCENARIOS:
+            sdir = out_root / scenario
+            (sdir / "rasters").mkdir(parents=True, exist_ok=True)
+            (sdir / "tables").mkdir(parents=True, exist_ok=True)
+            tag = scenario
+            if scenario == "v2_constrained":
+                feas_s = feas            # feasibility already excludes constraints
+                pr_s = sc["priority"]
+            else:
+                # v1_parity: feasibility WITHOUT constraint exclusion (V1-comparable)
+                feas_s = ctx["eligible_lu"] & dom
+                pr_s = np.full(dom.shape, np.nan)
+                pr_s[feas_s] = (S.PRIORITY_WEIGHTS["cooling_need"] * sc["need"][feas_s]
+                                + S.PRIORITY_WEIGHTS["suitability"] * sc["suitability"][feas_s])
+            # classify from the float32-rounded score so the written class
+            # raster is the exact threshold application of the written
+            # priority_score raster (single source of truth)
+            cls_s = S.classify_priority(pr_s.astype(np.float32).astype(np.float64), t1, t2)
+            write_full(np.where(dom, sc["need"], -1).astype(np.float32),
+                       sdir / "rasters" / f"cooling_need_{tag}_{y}.tif",
+                       grid, np.float32, -1.0, "cooling need 0-1 (pooled LST-led)")
+            write_full(np.where(dom, sc["suitability"], -1).astype(np.float32),
+                       sdir / "rasters" / f"suitability_{tag}_{y}.tif",
+                       grid, np.float32, -1.0, "suitability 0-1 (gated product)")
+            write_full(np.where(dom, sc["opportunity"], -1).astype(np.float32),
+                       sdir / "rasters" / f"plantation_opportunity_{tag}_{y}.tif",
+                       grid, np.float32, -1.0, "opportunity component 0-1 (V1 weights)")
+            pr_write = np.where(feas_s, pr_s, -1).astype(np.float32)
+            write_full(pr_write, sdir / "rasters" / f"priority_score_{tag}_{y}.tif",
+                       grid, np.float32, -1.0, "priority score 0-1 (feasible land only)")
+            cls_write = np.full(dom.shape, 255, dtype=np.uint8)
+            cls_write[feas_s] = cls_s[feas_s].astype(np.uint8)
+            write_full(cls_write, sdir / "rasters" / f"priority_class_{tag}_{y}.tif",
+                       grid, np.uint8, 255, "0 Low / 1 Medium / 2 High (fixed pooled bands)")
+            feas_write = np.full(dom.shape, 255, dtype=np.uint8)
+            feas_write[dom] = feas_s[dom].astype(np.uint8)
+            write_full(feas_write, sdir / "rasters" / f"feasibility_mask_{tag}_{y}.tif",
+                       grid, np.uint8, 255, "1 feasible / 0 not (hard mask)")
+
+            # tables
+            n_feas = int(feas_s.sum())
+            cls_counts = {int(c): int((cls_s[feas_s] == c).sum()) for c in (0, 1, 2)}
+            shares = pd.DataFrame([
+                {"year": y, "scenario": scenario,
+                 "class": S.PRIORITY_CLASS_LABELS[c], "class_value": c,
+                 "pixel_count": cls_counts[c],
+                 "area_ha": round(cls_counts[c] * 0.09, 1),
+                 "pct_of_feasible": round(100.0 * cls_counts[c] / n_feas, 3)}
+                for c in (0, 1, 2)])
+            shares.to_csv(sdir / "tables" / f"class_shares_{tag}_{y}.csv", index=False)
+            stats = pd.DataFrame([{
+                "year": y, "scenario": scenario,
+                "domain_px": int(dom.sum()), "feasible_px": n_feas,
+                "feasible_ha": round(n_feas * 0.09, 1),
+                "mean_cooling_need": round(float(np.nanmean(
+                    np.where(feas_s, sc["need"], np.nan))), 4),
+                "mean_suitability_feasible": round(float(np.nanmean(
+                    np.where(feas_s, sc["suitability"], np.nan))), 4),
+                "mean_priority_feasible": round(float(np.nanmean(
+                    np.where(feas_s, pr_s, np.nan))), 4),
+            }])
+            stats.to_csv(sdir / "tables" / f"full_area_stats_{tag}_{y}.csv", index=False)
+            # exclusion accounting per reason (within domain; precedence
+            # water > buildings > road_surfaces > landuse for attribution)
+            excl_rows = []
+            remaining = dom.copy()
+            for name, layer in (("water", ctx["constraint_masks"]["water"]),
+                                ("buildings", ctx["constraint_masks"]["buildings"]),
+                                ("road_surfaces", ctx["constraint_masks"]["road_surfaces"])):
+                if scenario == "v2_constrained":
+                    hit = remaining & layer
+                    excl_rows.append({"year": y, "scenario": scenario, "reason": name,
+                                      "area_ha": round(int(hit.sum()) * 0.09, 1)})
+                    remaining &= ~layer
+                else:
+                    excl_rows.append({"year": y, "scenario": scenario, "reason": name,
+                                      "area_ha": 0.0})
+            lu_hit = remaining & ~ctx["eligible_lu"]
+            excl_rows.append({"year": y, "scenario": scenario, "reason": "landuse_ineligible",
+                              "area_ha": round(int(lu_hit.sum()) * 0.09, 1)})
+            veg_hit = (remaining & ctx["eligible_lu"]
+                       & ~(np.isfinite(sc["raw"]["vegetation_cover"])
+                           & (sc["raw"]["vegetation_cover"] < 0.30)))
+            excl_rows.append({"year": y, "scenario": scenario,
+                              "reason": "planting_space_veg_ge_0.30",
+                              "area_ha": round(int(veg_hit.sum()) * 0.09, 1)})
+            # FEASIBLE row = planting space after ALL listed filters (the
+            # rows partition the domain); landuse/constraints-only feasible
+            # land is reported separately in full_area_stats
+            plant_space = remaining & ctx["eligible_lu"] \
+                & np.isfinite(sc["raw"]["vegetation_cover"]) \
+                & (sc["raw"]["vegetation_cover"] < 0.30)
+            excl_rows.append({"year": y, "scenario": scenario, "reason": "FEASIBLE",
+                              "area_ha": round(int(plant_space.sum()) * 0.09, 1)})
+            pd.DataFrame(excl_rows).to_csv(
+                sdir / "tables" / f"exclusion_accounting_{tag}_{y}.csv", index=False)
+        log(f"{y}: domain={int(dom.sum()):,} feasible_v2={int(feas.sum()):,} "
+            f"classes_v2={ {S.PRIORITY_CLASS_LABELS[c]: per_year[y]['class_px'][c] for c in (0,1,2)} }")
+
+    # ---- per-year candidate SITES with stable persistent IDs (S2 gates) ----
+    # Sites form from FEASIBLE land (eligible landuse, ~constraints) that also
+    # passes the S2 gates (priority >= pooled-p90 AND need >= pooled-p75);
+    # usable area (veg<0.30 planting-space) is computed in Phase 8.
+    # ---- STABLE ACADEMIC SHORTLIST: one fixed zone set from pooled evidence ----
+    ctx["pooled_refs"] = refs
+    ctx["sel_p90"] = sel_p90
+    ctx["sel_nd75"] = nd_p75
+    ctx["static"] = static
+    ctx["lu_codes"] = lu_codes
+    ctx["year_products"] = {y: load_phase3_year(phase3_root, y) for y in years}
+    stable = build_stable_zones(scored, ctx, years, grid, out_root)
+    log(f"2026 sites: {stable['zones']['v2_constrained']['n_sites']} candidates | "
+        f"{stable['zones']['v2_constrained']['n_shortlist']} shortlist "
+        f"({stable['zones']['v2_constrained']['shortlist_ha']:,.0f} ha)")
+
     record = {
-        "phase": 7, "variant": "v2", "project": "GreenGrid-AI",
+        "phase": 7, "variant": "v3-full-area-pooled", "project": "GreenGrid-AI",
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "years": list(years), "scenarios": list(SCENARIOS),
         "total_wall_s": time.perf_counter() - t_start,
-        "per_year_wall_s": {str(yi["year"]): round(yi["wall_s"], 3) for yi in year_infos},
-        "summary": summary,
-        "normalization_bounds": [b for yi in year_infos
-                                 for b in yi["normalization_bounds"]],
-        "constraint_counts_full_grid": constraints["counts_full_grid"],
-        "constraint_union_full_grid": constraints["counts_union_full_grid"],
-        "frozen_parameters": {
-            "norm_percentiles": list(S.NORM_PERCENTILES),
-            "need_weights": S.NEED_WEIGHTS, "opportunity_weights": S.OPPORTUNITY_WEIGHTS,
-            "road_band": S.ROAD_BAND, "green_proximity_cap_m": S.GREEN_PROXIMITY_CAP_M,
-            "landuse_eligibility": S.LANDUSE_ELIGIBILITY,
-            "class_edges": list(S.CLASS_EDGES), "class_labels": S.CLASS_LABELS,
-            "zone_rule": {"min_class": S.ZONE_MIN_CLASS,
-                          "min_zone_pixels": S.MIN_ZONE_PIXELS, "connectivity": "8"},
-            "priority_tiers": {"High": "class 4 (Very High)", "Medium": "class 3 (High)",
-                               "Low": "class 2 (Medium)"},
-            "score_nodata": S.SCORE_NODATA, "class_nodata": S.CLASS_NODATA,
-            "attribution_precedence": list(PRECEDENCE),
+        "pooled_references": refs,
+        "priority_thresholds": {"t1_medium": t1, "t2_high": t2,
+                                "rule": "pooled terciles of priority score over "
+                                        "feasible land, pooled across all years"},
+        "selection_constants": {
+            "priority_p90": sel_p90, "need_p75": nd_p75,
+            "source": "pooled v2_constrained feasible-land distributions "
+                      "(priority p90 / cooling-need p75), fixed constants",
+            "status": ("DOCUMENTED OPERATIONAL SELECTION CHOICES derived from "
+                       "the pooled score distributions (multiplier IQR 0.18; "
+                       "99.1% pass-through of the Medium gate; mega-patch "
+                       "aggregation), PENDING FIELD VALIDATION - not "
+                       "validated ecological cutoffs"),
         },
-        "model_lineage": p6_manifest.get("primary_model"),
-        "terminology_note": S.TERMINOLOGY_NOTE,
+        "formulas": {
+            "cooling_need": "0.55*n_pool(LST) + 0.25*n_pool(1-NDVI) + 0.20*n_pool(NDBI)",
+            "opportunity": "0.30*landuse_eligibility + 0.25*(1-n_pool(NDBI)) + "
+                           "0.15*road_band + 0.15*green_proximity + 0.15*(1-n_pool(NDVI))",
+            "suitability": "cooling_need * opportunity (gated product)",
+            "priority": "0.5*cooling_need + 0.5*suitability (feasible land only)",
+            "classes": "Low < t1 <= Medium < t2 <= High (fixed pooled terciles)",
+        },
+        "feasibility_rule": "eligible landuse (excl. 5 industrial, 7 retail; nodata "
+                            "neutral-eligible) AND NOT water/buildings/road_surfaces; "
+                            "veg<0.30 is a Phase-8 planting-space criterion, not a "
+                            "feasibility filter",
+        "per_year": {str(y): per_year[y] for y in years},
+        "sites_2026": {
+            "method": ("2026-only candidate sites: feasible & S2 gates "
+                       "(priority>=0.5926, need>=0.7116) & veg<0.30; MMU>=2ha; "
+                       "max 57 ha; score = 0.50 need + 0.25 veg_deficit + "
+                       "0.25 opportunity (0-100); shortlist = top 100 by score, "
+                       "oversized excluded"),
+            "constants": stable["constants"],
+            "per_scenario": stable["zones"],
+        },
+        "constraint_counts_full_grid": {n: int(m.sum()) for n, m in constraints["masks"].items()},
         "software_versions": {"python": platform.python_version()},
         "status": "success",
     }
     dump_json(record, out_root / "phase7_pipeline_record.json")
     manifest = {
         "stage": "phase7_plantation_suitability",
+        "variant": "v3-full-area-pooled",
         "created_at_utc": record["started_utc"],
         "scenarios": list(SCENARIOS),
         "scenario_definitions": {
-            "v1_parity": "no constraint exclusion (V1-comparable)",
-            "v2_constrained": "water/buildings/road-surfaces excluded (V2 owns "
-                              "these layers; V1 documented their absence)"},
-        "inputs": [{"path": str(phase6_dir / "phase6_manifest.json"),
-                    "sha256": sha256_file(phase6_dir / "phase6_manifest.json")}
-                   ] + [{"path": str(constraints_dir / f),
-                         "sha256": sha256_file(constraints_dir / f)}
-                        for f in CONSTRAINT_FILES.values()],
-        "years": [int(y) for y in years],
-        "per_year": summary,
+            "v1_parity": "feasibility without constraint exclusion (V1-comparable)",
+            "v2_constrained": "feasibility excludes water/buildings/road-surfaces"},
+        "inputs": [{"path": str(constraints_dir / f),
+                    "sha256": sha256_file(constraints_dir / f)}
+                   for f in CONSTRAINT_FILES.values()],
         "notes": [
-            "Formulation is a VERBATIM port of the frozen V1 suitability spec "
-            "(baseline Scenario A: gated product Need x Opportunity / 100).",
-            "Domain = per-year Phase 6 severity_score valid pixels (V1 locked "
-            "decision #1).",
-            "Class-relative per-year normalization (p1/p99): snapshots, not trends.",
-            "Tree-count requirement estimation is Phase 8 - NOT built here.",
+            "FULL valid study area scored; three separate components (cooling "
+            "need / feasibility / suitability) and a separate priority layer.",
+            "All normalizations use FIXED pooled 2022-2026 references; class "
+            "maps are cross-year comparable (relative-to-pooled-reference, "
+            "not absolute heat claims).",
+            "Independent of Phase 6. Zone formation (planting-land patches) is "
+            "Phase 8. Tree counts appear only in Phase 8 as planning-density "
+            "scenarios (never 'optimal').",
         ],
     }
     dump_json(manifest, out_root / "phase7_manifest.json")

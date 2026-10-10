@@ -1,101 +1,71 @@
 import { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { fetchTreeRequirementZones } from '../services/api';
-import { Bar } from 'react-chartjs-2';
 import { Loader } from '../components/Loader';
-import { TreePine, Download } from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
+import { Download } from 'lucide-react';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+const QUICK_PICKS = [400, 1000, 2500];
+
+const CERT_STYLE: Record<string, string> = {
+  low: 'bg-amber-100 text-amber-700',
+  mixed: 'bg-yellow-100 text-yellow-700',
+  identified: 'bg-green-100 text-green-700',
+};
 
 const TreeRequirements = () => {
-  const { year, scenario, density, setDensity } = useAppContext();
-  const [zones, setZones] = useState<any[]>([]);
+  const { scenario, density, setDensity,
+          selectedSites, setSelectedSites, treeCapacityLimit, setTreeCapacityLimit } = useAppContext();
+  const [allZones, setAllZones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    fetchTreeRequirementZones(year, scenario)
-      .then(data => {
-        const sorted = data.sort((a: any, b: any) => a.rank - b.rank);
-        setZones(sorted);
-      })
+    fetchTreeRequirementZones(2026, scenario)
+      .then((data) => setAllZones((data as any[]).sort((a, b) => a.rank_excl - b.rank_excl)))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [year, scenario]);
+  }, [scenario]);
 
-  const getTreeCountForDensity = (zone: any) => {
-    if (density === 400) return zone.recommended_trees_400;
-    if (density === 1000) return zone.recommended_trees_1000;
-    if (density === 2500) return zone.recommended_trees_2500;
-    return zone.recommended_trees; // fallback
+  const zones = allZones.filter((z) => z.shortlist);   // 2026 shortlist ONLY
+  const treesAt = (z: any, d: number) => Math.floor(z.usable_area_ha * d);
+  const selectedZones = allZones.filter((z) => selectedSites.has(z.zone_id));
+  const planTrees = selectedZones.reduce((a, z) => a + treesAt(z, density), 0);
+  const planArea = selectedZones.reduce((a, z) => a + z.usable_area_ha, 0);
+
+  // Priority presentation bands: shortlist rank terciles (fixed, ranking unchanged).
+  const CLASS_COLORS: Record<string, string> = { High: '#dc2626', Medium: '#f59e0b', Low: '#2563eb' };
+  const classOf = (rank: number) => {
+    const n = zones.length || 1;
+    return rank <= Math.ceil(n / 3) ? 'High' : rank <= Math.ceil((2 * n) / 3) ? 'Medium' : 'Low';
   };
 
-  const totalTrees = zones.reduce((acc, zone) => acc + getTreeCountForDensity(zone), 0);
-  const totalPlantable = zones.reduce((acc, zone) => acc + zone.plantable_ha, 0);
-
-  const chartData = {
-    labels: zones.map(z => `Zone ${z.zone_id}`),
-    datasets: [
-      {
-        label: 'Estimated Trees',
-        data: zones.map(z => getTreeCountForDensity(z)),
-        backgroundColor: '#22c55e',
-        borderRadius: 4,
-        hoverBackgroundColor: '#16a34a',
-      }
-    ]
+  const toggle = (id: number) => {
+    const next = new Set(selectedSites);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedSites(next);
   };
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: '#1e293b',
-        padding: 12,
-        titleFont: { size: 14, family: 'system-ui' },
-        bodyFont: { size: 13, family: 'system-ui' },
-        displayColors: false,
-        callbacks: {
-          label: function(context: any) {
-            return context.parsed.y.toLocaleString() + ' trees';
-          }
-        }
-      }
-    },
-    scales: {
-      y: { 
-        beginAtZero: true, 
-        grid: { color: '#f1f5f9' },
-        border: { display: false }
-      },
-      x: { 
-        grid: { display: false },
-        border: { display: false }
-      }
+  const autoSelect = () => {
+    const next = new Set<number>();
+    let acc = 0;
+    for (const z of allZones.filter((r) => r.shortlist)) {
+      const t = treesAt(z, density);
+      if (treeCapacityLimit != null && acc + t > treeCapacityLimit) continue;
+      next.add(z.zone_id);
+      acc += t;
     }
+    setSelectedSites(next);
   };
 
   const exportCSV = () => {
-    if (!zones.length) return;
-    const header = Object.keys(zones[0]).join(",");
-    const rows = zones.map(z => Object.values(z).join(","));
-    const csvContent = [header, ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    if (!allZones.length) return;
+    const header = Object.keys(allZones[0]).join(',');
+    const rows = allZones.map((z) => Object.values(z).join(','));
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     link.href = url;
-    link.download = `tree_requirements_${scenario}_${year}.csv`;
+    link.download = `stable_zones_${scenario}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -105,115 +75,105 @@ const TreeRequirements = () => {
       <header className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Tree Requirements</h1>
-          <p className="text-slate-500 mt-2 text-lg">Planning estimates based on plantable area and density scenarios.</p>
         </div>
-        <button onClick={exportCSV} className="flex items-center gap-2 bg-white border border-slate-200/60 shadow-sm px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition-colors">
-          <Download size={16} />
-          Export CSV
+        <button onClick={exportCSV} className="flex items-center gap-2 bg-white border border-slate-200/60 shadow-sm px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <Download size={16} /> Export CSV
         </button>
       </header>
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200/60 flex flex-wrap items-center justify-between gap-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-green-50 rounded-bl-full -z-10 opacity-50"></div>
-        
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-wrap items-center gap-8">
         <div>
-           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Planning Density Scenarios</h3>
-           <div className="flex bg-slate-100 rounded-xl p-1.5 shadow-inner">
-             {[
-               { val: 400, label: 'Low (400/ha)' },
-               { val: 1000, label: 'Primary (1000/ha)' },
-               { val: 2500, label: 'High (2500/ha)' }
-             ].map(d => (
-               <button 
-                 key={d.val}
-                 onClick={() => setDensity(d.val)}
-                 className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 ${
-                   density === d.val 
-                    ? 'bg-white shadow-sm text-green-700 border border-slate-200/50' 
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 border border-transparent'
-                 }`}
-               >
-                 {d.label}
-               </button>
-             ))}
-           </div>
-           <p className="text-[10px] text-slate-400 mt-3 font-medium">
-             * These are planning scenarios, not scientifically validated optimal planting densities.
-           </p>
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+            Density (trees/ha) - planning assumption
+          </h3>
+          <div className="flex items-center gap-3">
+            <input type="range" min={100} max={2500} step={50} value={density}
+                   onChange={(e) => setDensity(Number(e.target.value))} className="w-56 accent-green-600" />
+            <span className="font-mono font-bold text-slate-800 w-14">{density}</span>
+            {QUICK_PICKS.map((q) => (
+              <button key={q} onClick={() => setDensity(q)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg border ${density === q ? 'bg-green-50 border-green-300 text-green-700' : 'border-slate-200 text-slate-500'}`}>
+                {q}
+              </button>
+            ))}
+          </div>
         </div>
-        
-        <div className="text-right flex items-center gap-6">
-          <div className="p-4 bg-green-50 rounded-2xl text-green-600">
-            <TreePine size={40} strokeWidth={1.5} />
+        <div>
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tree capacity limit (optional)</h3>
+          <div className="flex items-center gap-2">
+            <input type="number" min={0} placeholder="no limit" value={treeCapacityLimit ?? ''}
+                   onChange={(e) => setTreeCapacityLimit(e.target.value === '' ? null : Number(e.target.value))}
+                   className="w-36 border border-slate-200 rounded-lg px-3 py-1.5 text-sm" />
+            <button onClick={autoSelect}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100">
+              Auto-select shortlist in priority order
+            </button>
+            <button onClick={() => setSelectedSites(new Set())}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-500">
+              Clear selection
+            </button>
           </div>
-          <div>
-            <div className="text-sm text-slate-500 font-medium tracking-wide">Total Estimated Trees</div>
-            <div className="text-4xl font-bold text-slate-900 mt-1">
-              {loading ? <span className="text-slate-300">...</span> : totalTrees.toLocaleString()}
-            </div>
-            <div className="text-sm text-slate-400 mt-1 font-mono">
-              across <span className="font-semibold text-slate-500">{totalPlantable.toFixed(2)}</span> plantable ha
-            </div>
+        </div>
+        <div className="ml-auto text-right">
+          <div className="text-sm text-slate-500 font-medium">
+            SELECTED PLAN ({selectedZones.length} of {allZones.filter((z) => z.shortlist).length} shortlist zones)
           </div>
+          <div className="text-3xl font-bold text-green-700">
+            {planTrees.toLocaleString()} <span className="text-base font-normal text-slate-400">trees @{density}/ha</span>
+          </div>
+          <div className="text-sm text-slate-400 font-mono">{planArea.toFixed(1)} usable ha</div>
+          <div className="text-[10px] text-slate-400">Selection is preserved by stable zone id when the year changes.</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 flex-1 min-h-[400px]">
-        {/* Chart Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col">
-          <h3 className="font-bold text-slate-800 mb-6">Distribution by Zone</h3>
-          <div className="flex-1 relative w-full h-full min-h-[300px]">
-            {loading ? <Loader /> : <Bar data={chartData} options={chartOptions} />}
-          </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden flex flex-col flex-1">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <h3 className="font-bold text-slate-800">Recommended shortlist - 2026 ({zones.length} sites)</h3>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">2026 only</span>
         </div>
 
-        {/* Table Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <h3 className="font-bold text-slate-800">Zone Details Table</h3>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{zones.length} Zones</span>
-          </div>
-          
-          <div className="flex-1 overflow-auto">
-            {loading ? (
-              <Loader />
-            ) : (
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white text-slate-400 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold">Rank</th>
-                    <th className="px-6 py-4 font-semibold">Zone</th>
-                    <th className="px-6 py-4 font-semibold">Priority</th>
-                    <th className="px-6 py-4 font-semibold text-right">Plantable Area</th>
-                    <th className="px-6 py-4 font-semibold text-right">Trees</th>
+        <div className="flex-1 overflow-auto">
+          {loading ? <Loader /> : (
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-white text-slate-400 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-sm">
+                <tr>
+                  <th className="px-4 py-3"></th>
+                  <th className="px-4 py-3 font-semibold">Rank</th>
+                  <th className="px-4 py-3 font-semibold">Zone</th>
+                  <th className="px-4 py-3 font-semibold text-right">Score</th>
+                  <th className="px-4 py-3 font-semibold text-right">Usable ha</th>
+                  <th className="px-4 py-3 font-semibold text-right">Trees @{density}</th>
+                  <th className="px-4 py-3 font-semibold">Confidence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {zones.map((z) => (
+                  <tr key={z.zone_id} className={selectedSites.has(z.zone_id) ? 'bg-green-50/60' : 'hover:bg-slate-50'}>
+                    <td className="px-4 py-2.5">
+                      <input type="checkbox" checked={selectedSites.has(z.zone_id)} onChange={() => toggle(z.zone_id)} />
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-400 font-medium">#{z.rank_excl}{z.oversized ? ' (oversized)' : ''}</td>
+                    <td className="px-4 py-2.5 font-bold text-slate-700">Zone {z.zone_id}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <div className="font-mono text-slate-600">{z.planning_priority_score}</div>
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style={{ background: CLASS_COLORS[classOf(z.rank_excl)] }}>
+                        {classOf(z.rank_excl)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-500">{Number(z.usable_area_ha).toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-slate-800">{treesAt(z, density).toLocaleString()}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${CERT_STYLE[z.landuse_certainty]}`}>{z.landuse_certainty}</span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {zones.map((zone) => (
-                    <tr key={zone.zone_id} className="hover:bg-blue-50/50 transition-colors group">
-                      <td className="px-6 py-4 text-slate-400 font-medium">#{zone.rank}</td>
-                      <td className="px-6 py-4 font-bold text-slate-700">Zone {zone.zone_id}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-wider ${
-                          zone.priority === 'High' ? 'bg-green-100 text-green-700' : 
-                          zone.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' : 
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {zone.priority}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right font-mono text-slate-500">
-                        {zone.plantable_ha.toFixed(2)} ha
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold text-slate-800 text-base">
-                        {getTreeCountForDensity(zone).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="p-3 border-t border-slate-100 text-[10px] text-slate-400">
+          2026 recommendation module. Reference backend columns at 400/1000/2500 exist in the API;
+          the plan total above uses the current slider density only.
         </div>
       </div>
     </div>

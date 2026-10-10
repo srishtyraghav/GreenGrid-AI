@@ -1,12 +1,4 @@
-"""Synthetic unit tests for V2 Phase 8 (tree requirement estimation).
-
-Fast fixtures only: density arithmetic, the frozen landuse-eligibility rule,
-the vegetation threshold boundary, priority thirds, exclusion interaction.
-No real rasters.
-
-Run from the project root:
-    PYTHONUTF8=1 PYTHONPATH=v2/src .venv/Scripts/python.exe -m pytest v2/tests -q
-"""
+"""Tests for the FINAL 2026-only tree-planting recommendation module (phase 8)."""
 
 from __future__ import annotations
 
@@ -14,158 +6,127 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]   # the v2/ tree
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC = PROJECT_ROOT / "src"
 for p in (str(PROJECT_ROOT), str(SRC)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from v2.phase7.suitability import label_zones  # noqa: E402
 from v2.phase8 import build as B  # noqa: E402
 
 
-def test_density_arithmetic_verbatim():
-    # 0.09 ha/px x 1000 trees/ha = 90 trees/px (V1's "9" was a decimal slip)
-    assert B.TREES_PER_PX_PRIMARY == 90
+def test_floor_arithmetic_and_labels():
     assert B.HA_PER_PX == pytest.approx(0.09)
-    px = 1234
-    ha = px * B.HA_PER_PX
-    assert int(round(ha * 1000)) == px * 90
-    assert int(round(ha * 400)) == px * 36
-    assert int(round(ha * 2500)) == px * 225
-    assert B.SENSITIVITY_DENSITIES == (400, 2500)
-    assert B.FOCUS_YEAR == 2026
+    assert "not optimal" in B.DENSITY_LABEL and "AI-predicted" in B.DENSITY_LABEL
+    for ha, d in ((8.19, 400), (72.54, 1000), (3.87, 2500), (11.1, 1750)):
+        assert int(ha * d) == np.floor(ha * d)
 
 
-def test_landuse_eligibility_rule():
-    # discouraged = {5 industrial, 7 retail}; everything else eligible,
-    # nodata (255) neutral-eligible (frozen V1 class-0 treatment)
-    lu = np.arange(0, 9)
-    elig = B.landuse_eligible_mask(lu)
-    assert elig.tolist() == [True, True, True, True, True, False,
-                             True, False, True]
-    assert bool(B.landuse_eligible_mask(np.array([255]))[0])
-    # every code 0..254 except 5 and 7 eligible
-    all_codes = np.arange(0, 256)
-    e = B.landuse_eligible_mask(all_codes)
-    assert int(e.sum()) == 254
+def test_mmu_and_max_size_rule():
+    mask = np.zeros((30, 40), dtype=bool)
+    mask[2:10, 2:12] = True
+    mask[20, 20] = True
+    labelled, n = label_zones(mask, min_pixels=23)
+    assert n == 1
+    sizes = pd.Series(labelled[labelled > 0]).value_counts() * 0.09
+    assert (sizes > 2).all() and (sizes <= 57).all()
 
 
-def test_vegetation_threshold_boundary_strict():
-    veg = np.array([0.0, 0.1, 0.299999, 0.30, 0.300001, 0.9])
-    ok = np.isfinite(veg) & (veg < B.VEG_COVER_THRESHOLD)
-    assert ok.tolist() == [True, True, True, False, False, False]
-
-
-def test_priority_thirds_assignment():
-    n = 11
-    third = int(np.ceil(n / 3.0))
-    assert third == 4
-    pr = [("High" if r <= third else "Medium" if r <= 2 * third else "Low")
-          for r in range(1, n + 1)]
-    assert pr == ["High"] * 4 + ["Medium"] * 4 + ["Low"] * 3
-    n = 69
-    third = int(np.ceil(n / 3.0))
-    pr = [("High" if r <= third else "Medium" if r <= 2 * third else "Low")
-          for r in range(1, n + 1)]
-    assert pr.count("High") == 23 and pr.count("Medium") == 23 \
-        and pr.count("Low") == 23
-
-
-def test_exclusion_interaction_synthetic():
-    """plantable = zone px AND not excluded AND eligible AND veg<0.30 —
-    each condition independently gates a synthetic pixel."""
-    cls = np.array([[3, 3, 3, 1, 3]])
-    zids = np.array([[7, 7, 7, 7, 0]])          # px4 not in any zone
-    excl = np.array([[0, 0, 1, 0, 0]])          # px2 excluded
-    lu = np.array([[6, 5, 6, 6, 6]])            # px1 industrial (discouraged)
-    veg = np.array([[0.1, 0.1, 0.1, 0.5, 0.1]])  # px3 over threshold
-    eligible = B.landuse_eligible_mask(lu)
-    veg_ok = veg < B.VEG_COVER_THRESHOLD
-    domain = excl == 0
-    attributed = np.array([[0, 0, 1, 0, 0]])    # px2 constraint-hit
-    cause = B.build_cause_grid(veg_ok, eligible, attributed)
-    # precedence: px2 constraint-hit wins over its (out-of-domain) exclusion;
-    # px3 veg-fail; px1 landuse-ineligible; px0 plantable; px4 outside zone
-    assert cause.tolist() == [[0, 2, 1, 3, 0]]
-    plant = (cls >= 3) & (zids > 0) & domain & (excl == 0) & eligible & veg_ok
-    assert plant.tolist() == [[True, False, False, False, False]]
-    # excluded-cause accounting is disjoint and sums to the excluded count
-    zone_dom = (zids > 0) & domain
-    excl_cause = cause[zone_dom & ~plant]
-    n_excl = int((zone_dom & ~plant).sum())
-    assert n_excl == int(sum(int((excl_cause == c).sum()) for c in (1, 2, 3)))
-
-
-def test_cause_grid_precedence_and_no_double_count():
-    rng = np.random.default_rng(11)
-    shape = (40, 50)
-    veg_ok = rng.random(shape) < 0.7
-    lu = rng.integers(0, 9, shape)
-    eligible = B.landuse_eligible_mask(lu)
-    attributed = (rng.random(shape) < 0.2).astype(np.int32)
-    cause = B.build_cause_grid(veg_ok, eligible, attributed)
-    # disjointness: each px has exactly one cause
-    per_px = ((cause == 1).astype(int) + (cause == 2).astype(int)
-              + (cause == 3).astype(int))
-    assert (per_px <= 1).all()
-    # precedence: constraint beats landuse beats veg
-    both = (attributed > 0) & ~eligible
-    assert (cause[both] == 1).all()
-    lu_only = ~(attributed > 0) & ~eligible
-    assert (cause[lu_only] == 2).all()
-    veg_only = ~(attributed > 0) & eligible & ~veg_ok
-    assert (cause[veg_only] == 3).all()
-    # v1_parity (attributed=None): no constraint cause at all
-    cause_base = B.build_cause_grid(veg_ok, eligible, None)
-    assert int((cause_base == 1).sum()) == 0
-
-
-def test_zone_area_accounting_invariant():
-    """zone px == plantable + excluded exactly; excluded ha == px * 0.09."""
-    for px, plant, excl in ((1000, 400, 600), (37, 37, 0), (10, 0, 10)):
-        assert px == plant + excl
-        assert abs(excl * B.HA_PER_PX - round(excl * B.HA_PER_PX, 3)) < 1e-9
-
-
-def test_scenario_and_output_constants():
-    # v2_constrained is PRIMARY; v1_parity is the V1-comparable baseline
-    assert B.SCENARIOS == ("v2_constrained", "v1_parity")
-    assert B.PRIMARY_SCENARIO == "v2_constrained"
-    assert B.BASELINE_SCENARIO == "v1_parity"
-    assert B.PRIMARY_SNAPSHOT_YEAR == 2026
-    assert B.PLANT_NODATA == 255 and B.TREES_NODATA == -1
-    assert B.SEVERITY_HIGH_CLASS == 2
-    assert B.EXCLUSION_PRECEDENCE == ("constraint", "landuse_ineligible",
-                                      "veg_threshold")
-    # wording: planning-density disclaimer present, no optimality claim
-    assert "not scientifically optimal" in B.DENSITY_LABEL
-    assert "Phase 9" in B.DENSITY_LABEL
-    # DEVIATIONS documents the 9-vs-90 decimal slip
-    assert any("decimal slip" in d for d in B.DEVIATIONS)
-
-
-def test_smoke_outputs_tagged_both_scenarios():
-    out = PROJECT_ROOT / "data" / "phase8"
-    rec = out / "phase8_pipeline_record.json"
+@pytest.fixture(scope="module")
+def record():
+    rec = PROJECT_ROOT / "data" / "phase8" / "phase8_pipeline_record.json"
     if not rec.exists():
-        pytest.skip("phase8 smoke not run here")
+        pytest.skip("phase8 not built")
     import json
-    record = json.loads(rec.read_text())
-    years = record["years"]
-    assert record["primary_scenario"] == "v2_constrained"
-    assert record["primary_snapshot_year"] == 2026
-    for scenario in ("v1_parity", "v2_constrained"):
-        for y in years:
-            zdf_path = (out / scenario / "tables"
-                        / f"tree_requirement_by_zone_{scenario}_{y}.csv")
-            assert zdf_path.exists()
-            import pandas as pd
-            zdf = pd.read_csv(zdf_path)
-            # new per-zone columns present
-            for col in ("excluded_ha", "recommended_trees_400",
-                        "recommended_trees_1000", "recommended_trees_2500"):
-                assert col in zdf.columns
-            assert (out / scenario / "rasters"
-                    / f"available_planting_space_{scenario}_{y}.tif").exists()
+    return json.loads(rec.read_text())
+
+
+def test_contract_and_2026_only_outputs(record):
+    out = PROJECT_ROOT / "data" / "phase8"
+    z = pd.read_csv(out / "v2_constrained" / "tables"
+                    / "tree_requirement_by_zone_v2_constrained_2026.csv")
+    assert {"zone_id", "plantable_ha", "usable_area_ha", "planning_priority_score",
+            "shortlist", "heat_need_comp", "vegetation_deficit_comp",
+            "opportunity_comp", "rationale", "landuse_certainty"} <= set(z.columns)
+    assert (z["usable_area_ha"] == (z["zone_px"] * 0.09).round(3)).all()
+    assert record["years"] == [2026]
+    # 2026-only: no per-year columns, no capacity artifacts
+    assert not any(c.startswith("plantable_px_20") for c in z.columns)
+    assert not (out / "v2_constrained" / "tables" / "theoretical_capacity_v2_constrained_2026.csv").exists()
+
+
+def test_shortlist_top100_rule(record):
+    import json
+    p7 = json.loads((PROJECT_ROOT / "data" / "phase7"
+                     / "phase7_pipeline_record.json").read_text())
+    c = p7["sites_2026"]["constants"]
+    assert c["year"] == 2026 and c["shortlist_top_n"] == 100 and c["mmu_min_px"] == 23
+    z = pd.read_csv(PROJECT_ROOT / "data" / "phase7" / "v2_constrained" / "zones"
+                    / "stable_zones_v2_constrained.csv")
+    zs = z.sort_values("rank").reset_index(drop=True)
+    exp = ((~zs["oversized"]).cumsum() <= 100) & (~zs["oversized"])
+    assert (zs["shortlist"].to_numpy() == exp.to_numpy()).all()
+    n_short = int(zs["shortlist"].sum())
+    ha = float(zs.loc[zs["shortlist"], "usable_area_ha"].sum())
+    assert 800 <= ha <= 1200, f"shortlist band violated: {n_short} sites {ha} ha"
+    assert "0.50*need(" in zs.iloc[0]["rationale"]
+
+
+def test_floor_reference_columns(record):
+    out = PROJECT_ROOT / "data" / "phase8"
+    z = pd.read_csv(out / "v2_constrained" / "tables"
+                    / "tree_requirement_by_zone_v2_constrained_2026.csv")
+    for d, col in ((400, "reference_trees_400"), (1000, "reference_trees_1000"),
+                   (2500, "reference_trees_2500")):
+        assert (z[col] == (z["usable_area_ha"] * d).astype(int)).all()
+    short = z[z["shortlist"]]
+    # per-site floor is exact; totals are sums of per-site floors (not floor of the sum)
+    assert (short["reference_trees_1000"] == (short["usable_area_ha"] * 1000).astype(int)).all()
+
+
+def test_phase9_contract_files(record):
+    import rasterio
+    out = PROJECT_ROOT / "data" / "phase8"
+    for p in [out / "v2_constrained" / "tables" / "tree_requirement_by_zone_v2_constrained_2026.csv",
+              out / "v2_constrained" / "rasters" / "available_planting_space_v2_constrained_2026.tif",
+              PROJECT_ROOT / "data" / "phase7" / "v2_constrained" / "rasters"
+              / "priority_zone_ids_v2_constrained_2026.tif"]:
+        assert p.exists(), p
+    with rasterio.open(out / "v2_constrained" / "rasters"
+                       / "priority_zone_ids_v2_constrained_2026.tif") as ds:
+        a = ds.read(1)
+    with rasterio.open(PROJECT_ROOT / "data" / "phase7" / "v2_constrained" / "rasters"
+                       / "priority_zone_ids_v2_constrained_2026.tif") as ds:
+        b = ds.read(1)
+    assert (a == b).all()
+
+
+def test_zone_table_json_serializable():
+    """The API serves df.to_dict(records) through FastAPI's JSONResponse
+    (allow_nan=False): any NaN in the contract CSV 500s every frontend page
+    that fetches it. Enforce serializability of every emitted zone CSV."""
+    import math
+    from fastapi.encoders import jsonable_encoder
+    out = PROJECT_ROOT / "data" / "phase8"
+    for scen in ("v1_parity", "v2_constrained"):
+        p = out / scen / "tables" / f"tree_requirement_by_zone_{scen}_2026.csv"
+        if not p.exists():
+            continue
+        recs = pd.read_csv(p).to_dict(orient="records")
+        enc = jsonable_encoder(recs)
+
+        def _walk(o):
+            if isinstance(o, float):
+                assert math.isfinite(o), "non-finite float in zone table"
+            elif isinstance(o, dict):
+                for v in o.values():
+                    _walk(v)
+            elif isinstance(o, (list, tuple)):
+                for v in o:
+                    _walk(v)
+
+        _walk(enc)

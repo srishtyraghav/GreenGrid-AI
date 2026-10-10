@@ -383,4 +383,31 @@ become Phase-3 requirements; (c) confirm Dynamic World remains the V2 LULC
 product (alternatives: ESA WorldCover, annual but 2020/2021-only epochs —
 Dynamic World stays the scientifically consistent 5-year choice).
 
+## 12. Erratum — study-area boundary geometry (disclosed 2026-10-09)
+
+**Correction.** This report and the Phase 2 provenance table originally
+described the OSM relation 1942586 geojson as the master study-area geometry
+"for all data filtering and clipping". That was inaccurate for the satellite
+data path: **all V1 and V2 GEE export scripts clipped every raster to the
+FAO/GAUL/2015 level-1 polygon `ADM1_NAME = Delhi`** (`v1/gee/export_data*.js`,
+`v2/gee/01_export_landsat9_w4.js`, `02_export_sentinel2_w4.js`,
+`03_export_lulc_w4.js`). The OSM geojson (fetched 2026-08-27) is a reference
+boundary and remains frozen as such.
+
+**Measured consequence (2026 severity raster, stable across years):**
+87,150 valid pixels (~7,843 ha) lie outside the OSM outline and 58,089
+pixels (~5,228 ha) inside the OSM outline carry no data — a fringe geometry
+difference between GAUL 2015 and the current OSM relation, not a pixel
+misalignment (the grid, CRS EPSG:4326, and transforms are consistent).
+
+**Resolution.** The dashboard now displays a **data-extent boundary**
+(`v2/data/gis/study_area/study_area_data_extent.geojson`), the vectorized
+envelope of every pixel valid in ≥1 of the five W4 years (Phase 6 severity
+∪ Phase 3 LST; disconnected regions preserved, never-valid interior gaps
+kept as polygon holes; ~30 m simplify tolerance). Verified: 99.996% of the
+2026 valid pixels fall inside it. The OSM polygon is retained as a separate,
+unchecked reference layer "Delhi NCT (OSM reference)". The provenance table
+(row 9) and the OSM geojson metadata were corrected accordingly. No raster
+or model output was regenerated or modified.
+
 *V2 Phase 2 · GreenGrid AI · all artifacts under `v2/data/phase2/`*

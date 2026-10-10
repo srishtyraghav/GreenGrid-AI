@@ -1,28 +1,11 @@
-"""V2 Phase 8 verification gate — numbered PASS/FAIL checklist.
+"""V2 Phase 8 FINAL (2026-only) verification gate. Exit 0 = all PASS.
 
-Read-only re-derivation. Exit 0 = all PASS.
-
-Checks
-------
-1.  lineage + framing: phase7/phase6 manifests present; frozen assumptions;
-    v2_constrained recorded as PRIMARY scenario, v1_parity as baseline,
-    2026 as the primary planning snapshot.
-2.  grid/CRS/dims of every written raster vs the authoritative grid.
-3.  tree-count arithmetic: for EVERY zone/density/year/scenario,
-    trees == round(plantable_ha x density) exactly (400/1000/2500).
-3z. per-zone area accounting: zone px == plantable + excluded exactly;
-    excluded cause counts (constraint/landuse/veg) are disjoint and sum to
-    excluded px (precedence, no double counting).
-4.  planting space independently re-derived from source inputs equals the
-    written raster; plantable is boolean, a subset of the valid domain, and
-    (v2_constrained) excludes every constraint pixel.
-4z. zone IDs: unique, present in the Phase 7 zone statistics tables with
-    identical pixel counts (identity cross-check re-asserted).
-5.  priority thirds match the Phase 7 ranking order.
-6.  cross-scenario sanity: v1_parity plantable space >= v2_constrained
-    (constraint exclusion can only remove space).
-7.  tables/clusters agree with rasters.
-8.  manifest + pipeline record complete.
+1. Phase 9 contract (zone CSV cols + plantable raster + mirror bit-match).
+2. Site rule recompute: 2026 feasible & S2 gates & veg<0.30, MMU>=2ha
+   (constants pinned from the phase7 record).
+3. Score recompute (0.50/0.25/0.25) + shortlist rule (top-100 non-oversized).
+4. Usable-area exactness (usable == site px) + floor arithmetic + certainty.
+5. Artifacts complete.
 """
 
 from __future__ import annotations
@@ -37,191 +20,128 @@ import pandas as pd
 import rasterio
 
 from ..common import GRID_FILE_DEFAULT, PROJECT_ROOT, Grid
-from ..phase4.assemble_features import load_static
-from ..phase7.build import read_band
-from ..phase8.build import (
-    DISCOURAGED_LANDUSE_CODES,
-    HA_PER_PX,
-    SCENARIOS,
-    SENSITIVITY_DENSITIES,
-    TREES_PER_HA_PRIMARY,
-    TREES_PER_PX_PRIMARY,
-    VEG_COVER_THRESHOLD,
-    build_cause_grid,
-    landuse_eligible_mask,
+from ..phase4.assemble_features import load_static, load_phase3_year
+from ..phase7.build import eligible_lu_grid
+from ..phase7.suitability import (
+    green_proximity_score, label_zones, landuse_eligibility, pooled_normalize,
+    road_accessibility_score,
 )
 
-RESULTS: list[tuple[str, bool, str]] = []
+RESULTS = []
 
 
-def check(n: str, name: str, ok: bool, detail: str = "") -> bool:
-    RESULTS.append((name, ok, detail))
+def check(n, name, ok, detail=""):
+    RESULTS.append((name, bool(ok), detail))
     print(f"[{n}] [{'PASS' if ok else 'FAIL'}] {name} {detail}", flush=True)
-    return ok
+    return bool(ok)
+
+
+def band(p):
+    with rasterio.open(p) as ds:
+        return ds.read(1)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=str(PROJECT_ROOT / "data" / "phase8"))
     ap.add_argument("--phase7-dir", default=str(PROJECT_ROOT / "data" / "phase7"))
-    ap.add_argument("--phase6-dir", default=str(PROJECT_ROOT / "data" / "phase6"))
     ap.add_argument("--phase3-root", default=str(PROJECT_ROOT / "data" / "phase3"))
     ap.add_argument("--grid-file", default=str(GRID_FILE_DEFAULT))
     args = ap.parse_args(argv)
-    out_root = Path(args.out)
-    phase7_dir = Path(args.phase7_dir)
-    phase6_dir = Path(args.phase6_dir)
-
-    manifest = json.loads((out_root / "phase8_manifest.json").read_text())
-    record = json.loads((out_root / "phase8_pipeline_record.json").read_text())
-    years = [int(y) for y in record["years"]]
+    out_root, p7 = Path(args.out), Path(args.phase7_dir)
     grid = Grid.from_file(Path(args.grid_file))
-    shape = grid.shape
+    record = json.loads((out_root / "phase8_pipeline_record.json").read_text())
+    p7rec = json.loads((p7 / "phase7_pipeline_record.json").read_text())
+    consts = p7rec["sites_2026"]["constants"]
     ok_all = True
 
-    # -- [1] lineage + frozen assumptions + framing ------------------------------
-    a = manifest.get("assumptions", {})
-    ok1 = (a.get("tree_density_trees_per_ha") == TREES_PER_HA_PRIMARY
-           and a.get("trees_per_plantable_px") == TREES_PER_PX_PRIMARY
-           and a.get("vegetation_cover_threshold") == VEG_COVER_THRESHOLD
-           and tuple(a.get("landuse_eligibility_rule", {}).get("excluded_codes", ()))
-           == DISCOURAGED_LANDUSE_CODES
-           and manifest.get("primary_scenario") == "v2_constrained"
-           and manifest.get("baseline_scenario") == "v1_parity"
-           and manifest.get("primary_snapshot_year") == 2026
-           and (phase7_dir / "phase7_pipeline_record.json").exists()
-           and (phase6_dir / "phase6_manifest.json").exists())
-    ok_all &= check("1", "lineage + frozen assumptions + primary/baseline framing", ok1)
+    # [1] Phase 9 contract
+    zcsv = out_root / "v2_constrained" / "tables" / "tree_requirement_by_zone_v2_constrained_2026.csv"
+    cols = set(pd.read_csv(zcsv, nrows=1).columns)
+    ok1 = {"zone_id", "plantable_ha", "usable_area_ha", "planning_priority_score",
+           "shortlist"} <= cols
+    with rasterio.open(out_root / "v2_constrained" / "rasters"
+                       / "available_planting_space_v2_constrained_2026.tif") as ds:
+        ok1 &= (ds.width, ds.height) == (grid.width, grid.height) and ds.nodata == 255.0
+    a = band(out_root / "v2_constrained" / "rasters" / "priority_zone_ids_v2_constrained_2026.tif")
+    b = band(p7 / "v2_constrained" / "rasters" / "priority_zone_ids_v2_constrained_2026.tif")
+    ok1 &= bool(np.array_equal(a, b))
+    ok_all &= check("1", "Phase 9 contract (cols, raster, mirror bit-match)", ok1)
 
-    # -- independent static sources ---------------------------------------------
+    # [2] site rule recompute (2026)
+    assert consts["year"] == 2026 and consts["mmu_min_px"] == 23 and \
+        abs(consts["max_size_ha"] - 57.0) < 1e-9 and consts["shortlist_top_n"] == 100
     static = load_static(Path(args.phase3_root))
-    lu = static["landuse_class"]
-    landuse = np.where(np.isfinite(lu), lu, 255.0).astype(np.int64)
-    eligible_lu = landuse_eligible_mask(landuse)
-    with rasterio.open(phase7_dir / "constraints_rasters" / "constraint_attributed_30m.tif") as ds:
-        attributed = ds.read(1).astype(np.int32)
+    lu = np.where(np.isfinite(static["landuse_class"]),
+                  static["landuse_class"], 255.0).astype(np.int64)
+    elig = eligible_lu_grid(lu)
+    att = band(p7 / "constraints_rasters" / "constraint_attributed_30m.tif") > 0
+    need = band(p7 / "v2_constrained" / "rasters" / "cooling_need_v2_constrained_2026.tif")
+    suit = band(p7 / "v2_constrained" / "rasters" / "suitability_v2_constrained_2026.tif")
+    dom = need != -1
+    pr = np.full(dom.shape, np.nan)
+    feas = elig & ~att & dom
+    pr[feas] = 0.5 * need[feas].astype(float) + 0.5 * suit[feas].astype(float)
+    P90 = float(p7rec["selection_constants"]["priority_p90"])
+    ND75 = float(p7rec["selection_constants"]["need_p75"])
+    vg = load_phase3_year(Path(args.phase3_root), 2026)["vegetation_cover"]
+    vok = np.isfinite(vg) & (vg < 0.30)
+    sites = feas & np.isfinite(pr) & (pr >= P90) & (need >= ND75) & vok
+    zexp, _ = label_zones(sites, min_pixels=23)
+    zgot = band(p7 / "v2_constrained" / "rasters" / "stable_zone_ids_v2_constrained.tif")
+    ok2 = bool(np.array_equal(zexp > 0, zgot > 0))
+    ok_all &= check("2", "site set == 2026 feasible & S2 gates & veg<0.30 "
+                    "recompute (constants pinned)", ok2)
 
-    DENSITIES = (400, TREES_PER_HA_PRIMARY, 2500)
+    # [3] score + shortlist rule on sampled sites
+    zdf = pd.read_csv(p7 / "v2_constrained" / "zones" / "stable_zones_v2_constrained.csv")
+    R = p7rec["pooled_references"]
+    prod = load_phase3_year(Path(args.phase3_root), 2026)
+    n_lst = 100.0 * pooled_normalize(prod["lst_C"], R["lst"]["p1"], R["lst"]["p99"])
+    n_1v = 100.0 * pooled_normalize(1.0 - prod["vegetation_cover"],
+                                    1.0 - R["veg"]["p99"], 1.0 - R["veg"]["p1"])
+    n_ndvi = 100.0 * pooled_normalize(prod["ndvi"], R["ndvi"]["p1"], R["ndvi"]["p99"])
+    n_ndbi = 100.0 * pooled_normalize(prod["ndbi"], R["ndbi"]["p1"], R["ndbi"]["p99"])
+    og = np.clip((0.30 * landuse_eligibility(lu) / 100.0
+                  + 0.25 * (100.0 - n_ndbi) / 100.0
+                  + 0.15 * road_accessibility_score(static["dist_road_m"]) / 100.0
+                  + 0.15 * green_proximity_score(static["dist_vegetation_m"]) / 100.0
+                  + 0.15 * (100.0 - n_ndvi) / 100.0) * 100.0, 0, 100)
+    rng = np.random.default_rng(5)
+    ok3 = True
+    zsorted = zdf.sort_values("rank").reset_index(drop=True)
+    rank_excl = (~zsorted["oversized"]).cumsum()
+    exp_short = ((rank_excl <= 100) & (~zsorted["oversized"])).to_numpy()
+    zdf = zsorted
+    for z in rng.choice(zdf["zone_id"].to_numpy(), size=25, replace=False):
+        m = zgot == int(z)
+        exp = (0.50 * float(np.nanmean(n_lst[m])) + 0.25 * float(np.nanmean(n_1v[m]))
+               + 0.25 * float(np.nanmean(og[m])))
+        got = float(zdf.loc[zdf["zone_id"] == int(z), "planning_priority_score"].iloc[0])
+        ok3 &= abs(exp - got) <= 0.06
+        row = zdf[zdf["zone_id"] == int(z)].iloc[0]
+        ok3 &= bool(row["shortlist"]) == bool(exp_short[int(row.name)])
+    ok_all &= check("3", "score recompute (0.50/0.25/0.25) + shortlist rule "
+                    "(top-100 non-oversized)", ok3)
 
-    # -- [2..7] per scenario-year ------------------------------------------------
-    totals = {}
-    for scenario in SCENARIOS:
-        totals[scenario] = {}
-        for y in years:
-            tag = f"{scenario}_{y}"
-            rdir = out_root / scenario / "rasters"
-            tdir = out_root / scenario / "tables"
-            ok2 = True
-            for name in (f"available_planting_space_{tag}.tif",
-                         f"recommended_trees_{tag}.tif"):
-                with rasterio.open(rdir / name) as ds:
-                    ok2 &= (ds.height, ds.width) == shape and \
-                        ds.crs.to_epsg() == 4326
-            ok_all &= check(f"2-{tag}", f"{tag} grid/CRS/dims", ok2)
+    # [4] usable exactness + floor arithmetic + certainty
+    zc = pd.read_csv(out_root / "v2_constrained" / "tables"
+                     / "tree_requirement_by_zone_v2_constrained_2026.csv")
+    ok4 = bool((zc["usable_area_ha"] == (zc["zone_px"] * 0.09).round(3)).all())
+    for d, col in ((400, "reference_trees_400"), (1000, "reference_trees_1000"),
+                   (2500, "reference_trees_2500")):
+        ok4 &= bool((zc[col] == (zc["usable_area_ha"] * d).astype(int)).all())
+    exp_cert = np.where(zc["untagged_share"] > 0.5, "low",
+                        np.where(zc["untagged_share"] > 0.2, "mixed", "identified"))
+    ok4 &= bool((zc["landuse_certainty"].to_numpy() == exp_cert).all())
+    ok_all &= check("4", "usable == site px; floor arithmetic exact; certainty rule", ok4)
 
-            space, sp_nd = read_band(rdir / f"available_planting_space_{tag}.tif")
-            trees_r, tr_nd = read_band(rdir / f"recommended_trees_{tag}.tif")
-            zids, _ = read_band(phase7_dir / scenario / "rasters"
-                                / f"priority_zone_ids_{scenario}_{y}.tif")
-            excl, _ = read_band(phase7_dir / scenario / "rasters"
-                                / f"exclusion_mask_{scenario}_{y}.tif")
-            cls, _ = read_band(phase7_dir / scenario / "rasters"
-                               / f"suitability_class_{scenario}_{y}.tif")
-            veg, veg_nd = read_band(Path(args.phase3_root) / str(y)
-                                    / "vegetation_cover_30m.tif")
-            domain = excl == 0
-            veg_ok = np.isfinite(veg) & (veg != veg_nd) & (veg < VEG_COVER_THRESHOLD)
-
-            # independent plantable re-derivation via the shared cause grid
-            cause = build_cause_grid(
-                veg_ok, eligible_lu,
-                attributed if scenario == "v2_constrained" else None)
-            plant_re = ((cls >= 3) & (zids > 0) & domain & (excl == 0)
-                        & eligible_lu & veg_ok)
-            ok4a = bool(np.array_equal(plant_re, space == 1))
-            ok4b = bool(np.all((space[domain] == 0) | (space[domain] == 1)))
-            ok4c = bool(np.all(space[~domain] == 255))
-            ok4d = bool(np.all(~plant_re | domain))                    # subset of domain
-            ok4e = (int((plant_re & (attributed > 0)).sum()) == 0
-                    if scenario == "v2_constrained" else True)        # no constraint px
-            ok4f = bool(np.array_equal(
-                np.where(domain, plant_re.astype(np.int16) * TREES_PER_PX_PRIMARY,
-                         -1), trees_r))
-            ok_all &= check(f"4-{tag}", f"{tag} plantable mask re-derived/boolean/"
-                            f"subset/excludes constraints",
-                            ok4a and ok4b and ok4c and ok4d and ok4e and ok4f,
-                            f"plantable={int(plant_re.sum()):,}")
-
-            zdf = pd.read_csv(tdir / f"tree_requirement_by_zone_{tag}.csv")
-            sdf = pd.read_csv(tdir / f"tree_requirement_summary_{tag}.csv")
-            p7z = pd.read_csv(phase7_dir / scenario / "tables"
-                              / f"priority_zone_statistics_{scenario}_{y}.csv")
-
-            # [4z] zone IDs unique + identical to Phase 7 tables
-            ok4z = bool(zdf["zone_id"].is_unique) and \
-                set(zdf["zone_id"].tolist()) == set(p7z["zone_id"].tolist())
-            ok_all &= check(f"4z-{tag}", f"{tag} zone IDs unique == Phase 7 zones",
-                            ok4z)
-
-            # [3z] per-zone area accounting + disjoint causes (no double count)
-            acc = (zdf["pixel_count"]
-                   == zdf["plantable_px"] + zdf["excluded_px"])
-            causes = (zdf["excluded_constraint_px"] + zdf["excluded_landuse_px"]
-                      + zdf["excluded_veg_px"] == zdf["excluded_px"])
-            ok3z = bool(acc.all() and causes.all())
-            ok_all &= check(f"3z-{tag}", f"{tag} area accounting plantable+excluded"
-                            f" == zone px; causes disjoint", ok3z)
-
-            # [3] tree arithmetic for EVERY zone x density
-            ok3 = True
-            for d, col in ((400, "recommended_trees_400"),
-                           (TREES_PER_HA_PRIMARY, "recommended_trees_1000"),
-                           (2500, "recommended_trees_2500")):
-                expect = (zdf["plantable_ha"] * d).round().astype(int)
-                ok3 &= bool((zdf[col] == expect).all())
-            ok3 &= bool((zdf["recommended_trees"]
-                         == zdf["recommended_trees_1000"]).all())
-            ok3 &= bool(np.all(sdf["recommended_trees"]
-                               == (sdf["plantable_ha"]
-                                   * sdf["density_trees_per_ha"]).round().astype(int)))
-            ok_all &= check(f"3-{tag}", f"{tag} trees == round(ha x density) for "
-                            f"every zone x {DENSITIES}", ok3)
-
-            n = len(zdf)
-            third = int(np.ceil(n / 3.0))
-            expect = pd.Series(
-                ["High" if r <= third else ("Medium" if r <= 2 * third else "Low")
-                 for r in zdf.sort_values("rank")["rank"]],
-                index=zdf.sort_values("rank").index)
-            ok5 = bool((zdf.sort_values("rank")["priority"]
-                        .reset_index(drop=True) == expect.reset_index(drop=True)).all())
-            ok_all &= check(f"5-{tag}", f"{tag} priority thirds == ranking order", ok5,
-                            f"n={n} third={third}")
-
-            ok7a = int(zdf["plantable_px"].sum()) == int(plant_re.sum())
-            ok7b = int(sdf.loc[sdf["is_primary_density"], "plantable_px"].iloc[0]) \
-                == int(plant_re.sum())
-            import geopandas as gpd
-            cl = gpd.read_file(out_root / scenario / "vectors"
-                               / f"recommended_plantations_{tag}.geojson")
-            ok7c = int(cl["trees"].sum()) == int(plant_re.sum()) * TREES_PER_PX_PRIMARY
-            ok_all &= check(f"7-{tag}", f"{tag} tables/clusters agree with rasters",
-                            ok7a and ok7b and ok7c)
-            totals[scenario][y] = int(plant_re.sum())
-
-    # -- [6] cross-scenario -------------------------------------------------------
-    ok6 = all(totals["v1_parity"][y] >= totals["v2_constrained"][y] for y in years)
-    ok_all &= check("6", "v1_parity plantable >= v2_constrained every year", ok6,
-                    " ".join(f"{y}:{totals['v1_parity'][y]:,}>={totals['v2_constrained'][y]:,}"
-                             for y in years))
-
-    # -- [8] artifacts -------------------------------------------------------------
-    need = [out_root / "phase8_manifest.json", out_root / "phase8_pipeline_record.json"]
-    need += [out_root / sc / "tables" / f"tree_requirement_citywide_5yr_{sc}.csv"
-             for sc in SCENARIOS]
-    missing = [str(p) for p in need if not p.exists()]
-    ok_all &= check("8", "manifest + record + citywide tables present",
-                    not missing, f"missing={missing}" if missing else "all present")
+    # [5] artifacts
+    need_files = [out_root / "phase8_manifest.json", out_root / "phase8_pipeline_record.json",
+                  out_root / "v2_constrained" / "tables" / "recommended_sites_v2_constrained_2026.csv"]
+    missing = [str(f) for f in need_files if not f.exists()]
+    ok_all &= check("5", "artifacts complete", not missing,
+                    f"missing={missing}" if missing else "all present")
 
     fails = [r for r in RESULTS if not r[1]]
     print(f"\n[SUMMARY] {len(RESULTS) - len(fails)}/{len(RESULTS)} checks pass, "
